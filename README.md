@@ -2,7 +2,7 @@
 
 > An open-source, Rust-based SCADA & Machine Interface platform
 
-ForgeIO (also known as OpenForge) leverages Rust’s performance, safety, and concurrency to deliver a modern solution for industrial automation, including a comprehensive visual design environment and edge deployment capabilities.
+ForgeIO (also known as OpenForge) leverages Rust’s performance, safety, and concurrency to deliver a modern, high-performance solution for industrial automation. It's designed for demanding environments requiring scalability to millions of tags and robust data handling, featuring a comprehensive visual design environment and flexible edge deployment capabilities.
 
 ---
 
@@ -23,7 +23,7 @@ ForgeIO (also known as OpenForge) leverages Rust’s performance, safety, and co
 
 ForgeIO / OpenForge is designed to:
 
-* **Collect** data from industrial devices via OPC UA, Modbus, and MQTT
+* **Collect** data from industrial devices via a highly extensible driver system (initially supporting OPC UA, Modbus, MQTT, Siemens S7, and more)
 * **Manage** real-time tags and store historical data
 * **Script** custom logic in Python (via PyO3) or Rust
 * **Visualize** and **control** processes through a web-based drag-and-drop interface
@@ -34,7 +34,8 @@ ForgeIO / OpenForge is designed to:
 
 ## Key Features
 
-* **Data Acquisition Layer**: Native support for OPC UA, Modbus TCP/RTU, and MQTT
+* **High-Performance & Scalable Tag Engine**: Designed for millions of real-time tags with efficient updates and low latency.
+* **Data Acquisition Layer**: Extensible architecture supporting OPC UA, Modbus TCP/RTU, MQTT, Siemens S7, with the ability for community contributions.
 * **Tag System & Historian**: Thread-safe in-memory tags, seamless time-series storage
 * **Embedded Scripting**: Python 3+ integration for event handlers and calculations
 * **Real-Time Events & Alarms**: Configurable triggers, notifications, and workflows
@@ -46,19 +47,24 @@ ForgeIO / OpenForge is designed to:
 
 ## Architecture
 
-### Gateway Server
+### Gateway Server / Edge Runtime
 
-* **Data Acquisition**: OPC UA, Modbus, MQTT modules
-* **Scripting Engine**: Embedded Python via PyO3
-* **Tag Management**: Fast, concurrent tag reads/writes
-* **Event Processing**: Alarm management and notification services
-* **API Layer**: WebSockets, REST, gRPC endpoints
+The core runtime can operate as a centralized Gateway or be deployed directly at the Edge (e.g., as a Machine Interface/HMI backend). Both modes share the same high-performance foundation but can be configured for different scales and resource constraints.
 
-### Edge & Machine Interface Layer
+* **Data Acquisition**: Pluggable drivers for various protocols (OPC UA, Modbus, MQTT, Siemens S7, etc.). Built for high throughput and concurrent connections. Edge deployments prioritize low-latency direct device communication.
+* **Tag Management**: Fast, concurrent tag reads/writes. Scalable engine designed to handle millions of tags efficiently.
+* **Scripting Engine**: Embedded Python via PyO3 for flexible logic.
+* **Event Processing**: Alarm management and notification services.
+* **API Layer**: WebSockets, REST, gRPC endpoints for integration and UI communication.
+* **Edge-Specific Optimizations**: Includes local data buffering for resilience, efficient data flow minimizing overhead, and optimized task scheduling for responsive HMI interactions.
 
-* **Protocol Gateways**: Local OPC UA and MQTT bridges
-* **Visualization UI**: Rust/WASM components for HMI screens
-* **Local Historian**: Temporary storage to support offline operation
+### Edge & Machine Interface Capabilities (Leveraging Gateway Runtime)
+
+When deployed at the edge, the runtime leverages the core components for:
+
+* **Protocol Gateways**: Utilizing the standard, high-performance drivers for direct PLC communication.
+* **Visualization UI Backend**: Providing real-time data via WebSockets or other efficient mechanisms to the Rust/WASM frontend.
+* **Local Historian**: Temporary storage (potentially using lightweight databases or in-memory buffering) to support offline operation and ensure data integrity.
 
 ### Visual Design Environment
 
@@ -96,17 +102,17 @@ ForgeIO / OpenForge is designed to:
 
 ### Backend (Rust)
 
-* **Frameworks**: Axum, Tokio
-* **Libraries**: tokio-modbus, opcua, rumqttc
+* **Frameworks**: Axum, Tokio (chosen for high-concurrency and performance)
+* **Libraries**: tokio-modbus, opcua, rumqttc, potentially dedicated S7 libraries
 * **Scripting**: PyO3
 * **Storage**: SQLx, TimescaleDB
 * **Realtime**: tokio-tungstenite (WebSockets)
 
 ### Frontend (Rust/WASM)
 
-* **UI**: Leptos or Yew
+* **UI**: Leptos or Yew (chosen for performance and WASM integration)
 * **Compilation**: WebAssembly for high performance
-* **Components**: Custom drag-and-drop toolkit
+* **Components**: Custom drag-and-drop toolkit, optimized for high-frequency data updates
 
 ---
 

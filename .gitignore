@@ -1,0 +1,12 @@
+# Ignore Cargo build artifacts
+/target/
+
+# Ignore editor directories
+/.idea/
+/.vscode/
+
+# Ignore logs and temporary files
+*.log
+
+# Ignore other common files
+.DS_Store

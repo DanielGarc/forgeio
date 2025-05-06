@@ -1,0 +1,15 @@
+[package]
+name = "gateway_server"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1", features = ["full"] } # Async runtime
+axum = "0.7" # Web framework
+async-trait = "0.1" # For async traits
+config = { version = "0.14", features = ["toml"] } # Configuration loading
+serde = { version = "1.0", features = ["derive"] } # Serialization/Deserialization
+dashmap = "5.5" # Concurrent HashMap
+opcua = "0.12" # OPC UA Client Library

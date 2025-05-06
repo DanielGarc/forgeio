@@ -1,0 +1,9 @@
+[workspace]
+
+members = [
+    "gateway_server",
+    "frontend_design_env",
+    # Add other crates like 'common' or drivers here later
+]
+
+resolver = "2"

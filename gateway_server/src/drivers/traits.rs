@@ -1,0 +1,67 @@
+use async_trait::async_trait;
+use std::collections::HashMap;
+use std::error::Error;
+use serde::Deserialize; // Added for config
+
+// Represents the value of a tag
+// TODO: Expand this significantly (Quality, Timestamp, different types)
+#[derive(Debug, Clone)]
+pub enum TagValue {
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    String(String),
+    // Add more types as needed (e.g., arrays, structures)
+    Error(String), // To represent read/write errors for a specific tag
+}
+
+/// Common configuration for all drivers
+#[derive(Debug, Clone, Deserialize)] // Added Deserialize
+pub struct DriverConfig {
+    pub id: String, // Unique identifier for this device instance
+    pub name: String, // User-friendly name
+    pub address: String, // e.g., IP address, COM port, connection string
+    pub scan_rate_ms: u64, // How often to poll tags (if applicable)
+    // Add other common fields: timeout, retries etc.
+}
+
+/// Represents a request to read or write a tag
+#[derive(Debug, Clone)]
+pub struct TagRequest {
+    pub address: String, // Protocol-specific tag address (e.g., "ns=1;s=MyTag", "40001", "Topic/Subtopic")
+    // Potentially add data type hint
+}
+
+// Type alias for results from driver operations
+pub type DriverResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
+
+/// The core trait that all device protocol drivers must implement.
+/// This allows the gateway to interact with different devices uniformly.
+#[async_trait]
+pub trait DeviceDriver: Debug + Send + Sync {
+    /// Get the configuration of this driver instance.
+    fn config(&self) -> &DriverConfig;
+
+    /// Connect to the underlying device.
+    async fn connect(&mut self) -> DriverResult<()>;
+
+    /// Disconnect from the underlying device.
+    async fn disconnect(&mut self) -> DriverResult<()>;
+
+    /// Check the connection status.
+    async fn check_status(&mut self) -> DriverResult<()>; // Returns Ok(()) if connected, Err otherwise
+
+    /// Read a batch of tags.
+    /// Takes a list of tag addresses and returns a map of address to TagValue.
+    async fn read_tags(&mut self, tags: &[TagRequest]) -> DriverResult<HashMap<String, TagValue>>;
+
+    /// Write a batch of tags.
+    /// Takes a map of tag address to the TagValue to write.
+    /// Returns a map of address to TagValue representing the result (e.g., success or error status per tag).
+    async fn write_tags(&mut self, tags: HashMap<String, TagValue>) -> DriverResult<HashMap<String, TagValue>>;
+
+    // TODO: Add methods for subscription-based updates if the protocol supports it
+    // async fn subscribe_tags(&mut self, tags: &[TagRequest]) -> DriverResult<()>;
+    // async fn unsubscribe_tags(&mut self, tags: &[TagRequest]) -> DriverResult<()>;
+    // Potentially return a stream or use a callback mechanism for subscription updates
+}

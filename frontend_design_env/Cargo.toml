@@ -1,0 +1,10 @@
+[package]
+name = "frontend_design_env"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"] # For WASM and potentially other Rust usage
+
+[dependencies]
+# Add WASM/frontend dependencies here later (e.g., leptos, yew, wasm-bindgen)
