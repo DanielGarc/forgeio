@@ -1,26 +1,28 @@
 use axum::{
     routing::get,
+    Json,
+    extract::State,
     Router,
+    response::IntoResponse,
 };
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 use std::collections::HashMap;
-use tokio::sync::Mutex; // Use tokio's Mutex for async locking
-use tokio::time::{interval, Duration, Instant}; // For polling loop
+use tokio::sync::Mutex;
+use tokio::time::{interval, Duration, Instant};
+use config::settings::Settings;
+use tags::structures::{Tag, TagValue, TagMetadata, Quality};
+use tags::engine::TagEngine;
+use drivers::traits::{DeviceDriver, TagRequest};
+use drivers::opcua::OpcUaDriver;
+use serde_json::json;
 
 // Core Modules
 mod drivers;
 mod tags;
 mod config;
 mod api;
-
-// Use necessary types
-use config::settings::{Settings, TagConfig}; // Import TagConfig
-use tags::engine::TagEngine;
-use tags::structures::{Tag, TagValue, TagMetadata}; // Import Tag and TagMetadata
-use drivers::traits::{DeviceDriver, DriverConfig, TagRequest}; // Import DeviceDriver trait and TagRequest
-use drivers::opcua::OpcUaDriver; // Import the specific driver implementation
 
 // Potentially other modules like scripting, historian, events etc.
 
@@ -55,18 +57,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // For now, assume all are OPC UA if opcua driver exists
         let driver: Arc<Mutex<dyn DeviceDriver + Send + Sync>> = {
             // Create the specific driver instance
-            let mut opcua_driver = OpcUaDriver::new(driver_config.clone());
+            let mut opcua_driver = OpcUaDriver::new(driver_config.clone()).map_err(|e| format!("Failed to create OPC UA driver: {}", e))?;
             // Attempt to connect
-            match opcua_driver.connect().await {
-                Ok(_) => {
-                    println!("Driver '{}' connected successfully.", driver_config.id);
-                    Arc::new(Mutex::new(opcua_driver)) // Wrap in Arc<Mutex>
-                }
-                Err(e) => {
-                    eprintln!("ERROR: Failed to connect driver '{}': {}. Skipping driver.", driver_config.id, e);
-                    continue; // Skip this driver if connection failed
-                }
-            }
+            opcua_driver.connect().map_err(|e| format!("Failed to connect OPC UA driver: {}", e))?;
+            Arc::new(Mutex::new(opcua_driver)) // Wrap in Arc<Mutex>
         };
 
         driver_instances.insert(driver_config.id.clone(), driver);
@@ -82,13 +76,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Registering tag: {} (Driver: {}, Address: {}, Rate: {}ms)",
                 tag_config.path, tag_config.driver_id, tag_config.address, tag_config.poll_rate_ms);
 
+            let metadata = TagMetadata {
+                description: Some("Default description".to_string()),
+                eng_unit: Some("unit".to_string()),
+                eng_low: Some(f64::MIN),
+                eng_high: Some(f64::MAX),
+                writable: false,  // Ensure all fields are correctly set
+            };
+
             let initial_tag = Tag {
                 path: tag_config.path.clone(),
-                value: TagValue::bad("Initializing"), // Start with Bad quality
+                value: TagValue::bad(Quality::Bad), // Start with Bad quality
                 driver_id: tag_config.driver_id.clone(),
                 driver_address: tag_config.address.clone(),
                 poll_rate_ms: tag_config.poll_rate_ms,
-                metadata: TagMetadata { description: None }, // Basic metadata
+                metadata, // Basic metadata
             };
             tag_engine_arc.register_tag(initial_tag);
         } else {
@@ -130,7 +132,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             for ((driver_id, poll_rate_ms), tag_paths) in &poll_groups {
                 let poll_duration = Duration::from_millis(*poll_rate_ms);
-                let last_poll = last_poll_times.entry((driver_id.clone(), *poll_rate_ms)).or_insert(Instant::MIN);
+                let last_poll = last_poll_times.entry((driver_id.clone(), *poll_rate_ms)).or_insert(Instant::now() - Duration::from_secs(60));
 
                 if now.duration_since(*last_poll) >= poll_duration {
                     // This group is due for polling
@@ -150,10 +152,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             match driver.read_tags(&requests).await {
                                 Ok(results) => {
                                     println!("Read successful for {} tags from driver '{}'", results.len(), driver_id);
-                                    for (address, tag_value) in results {
-                                        // Need to map address back to tag path - requires TagEngine modification or lookup map
-                                        if let Some(path) = polling_tag_engine.find_path_by_address(driver_id, &address) { // Assumed method
-                                             polling_tag_engine.update_tag_value(&path, tag_value);
+                                    for (address, driver_tag_value) in results {
+                                        if let Some(path) = polling_tag_engine.find_path_by_address(driver_id, &address) {
+                                            let structures_tag_value = TagValue::from(driver_tag_value);  
+                                            polling_tag_engine.update_tag_value(&path, structures_tag_value);
                                         }
                                     }
                                 }
@@ -161,7 +163,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     eprintln!("ERROR: Failed to read tags from driver '{}': {}", driver_id, e);
                                     // Optionally mark tags as Bad quality
                                     for path in tag_paths {
-                                        polling_tag_engine.update_tag_value(path, TagValue::bad(&format!("Read Error: {}", e)));
+                                        polling_tag_engine.update_tag_value(path, TagValue::bad(Quality::Bad));
                                     }
                                 }
                             }
@@ -181,7 +183,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting API server...");
     let app = Router::new()
         .route("/", get(root))
-        // Pass tag engine state to handlers
+        .route("/tags", get(get_tags)) // New route for tags
         .with_state(tag_engine_arc); // Pass the Arc'd TagEngine
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
@@ -198,22 +200,7 @@ async fn root() -> &'static str {
     "ForgeIO Gateway Server Running"
 }
 
-// --- Helper methods needed in TagEngine (Assumed for now) ---
-// NOTE: These methods need to be properly implemented in src/tags/engine.rs
-impl TagEngine {
-    // Assumed method to get full tag details - replace with actual implementation
-     fn get_tag_details(&self, tag_path: &str) -> Option<Tag> {
-         // Actual implementation needed - this is just a placeholder
-         // It needs to access self.tags and return a CLONED Tag struct
-         self.tags.get(tag_path).map(|tag_ref| tag_ref.value().clone())
-         // ^^^ THIS IS INCORRECT - Needs to clone the whole Tag, not just TagValue ^^^ 
-     }
-
-    // Assumed method to find tag path by driver/address - replace with actual implementation
-    fn find_path_by_address(&self, driver_id: &str, address: &str) -> Option<String> {
-         // Actual implementation needed - iterate through self.tags
-        self.tags.iter()
-            .find(|entry| entry.driver_id == driver_id && entry.driver_address == address)
-            .map(|entry| entry.key().clone())
-    }
+async fn get_tags(State(tag_engine): State<Arc<TagEngine>>) -> impl IntoResponse {
+    let tags = tag_engine.get_all_tags().await;  
+    Json(json!(tags)) 
 }

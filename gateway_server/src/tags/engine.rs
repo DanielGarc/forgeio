@@ -24,7 +24,7 @@ impl TagEngine {
 
     /// Get a snapshot of a tag's value.
     pub fn read_tag(&self, tag_path: &str) -> Option<TagValue> {
-        self.tags.get(tag_path).map(|tag_ref| tag_ref.value().clone())
+        self.tags.get(tag_path).and_then(|tag_ref| Some(tag_ref.value.clone()))
     }
 
     /// Update the value of an existing tag.
@@ -41,6 +41,23 @@ impl TagEngine {
     /// Get a list of all registered tag paths.
     pub fn get_all_tag_paths(&self) -> Vec<String> {
         self.tags.iter().map(|entry| entry.key().clone()).collect()
+    }
+
+    /// Get the details of a tag.
+    pub fn get_tag_details(&self, tag_path: &str) -> Option<Tag> {
+        self.tags.get(tag_path).map(|tag_ref| tag_ref.clone()) // Clone the Tag struct
+    }
+
+    /// Find the path of a tag by its driver ID and address.
+    pub fn find_path_by_address(&self, driver_id: &str, address: &str) -> Option<String> {
+        self.tags.iter()
+            .find(|entry| entry.driver_id == driver_id && entry.driver_address == address)
+            .map(|entry| entry.key().clone())
+    }
+
+    /// Get a serializable list of all tags.
+    pub async fn get_all_tags(&self) -> Vec<Tag> {
+        self.tags.iter().map(|entry| entry.value().clone()).collect()
     }
 
     // TODO: Add methods for bulk reads/writes if needed

@@ -2,21 +2,10 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::error::Error;
 use serde::Deserialize; // Added for config
-
-// Represents the value of a tag
-// TODO: Expand this significantly (Quality, Timestamp, different types)
-#[derive(Debug, Clone)]
-pub enum TagValue {
-    Bool(bool),
-    Int(i64),
-    Float(f64),
-    String(String),
-    // Add more types as needed (e.g., arrays, structures)
-    Error(String), // To represent read/write errors for a specific tag
-}
+use crate::tags::structures::TagValue;  // Imported from structures to avoid duplication
 
 /// Common configuration for all drivers
-#[derive(Debug, Clone, Deserialize)] // Added Deserialize
+#[derive(Debug, Clone, Deserialize)] // Added Deserialize and Debug
 pub struct DriverConfig {
     pub id: String, // Unique identifier for this device instance
     pub name: String, // User-friendly name
@@ -26,7 +15,7 @@ pub struct DriverConfig {
 }
 
 /// Represents a request to read or write a tag
-#[derive(Debug, Clone)]
+#[derive( Clone)]
 pub struct TagRequest {
     pub address: String, // Protocol-specific tag address (e.g., "ns=1;s=MyTag", "40001", "Topic/Subtopic")
     // Potentially add data type hint
@@ -38,15 +27,15 @@ pub type DriverResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 /// The core trait that all device protocol drivers must implement.
 /// This allows the gateway to interact with different devices uniformly.
 #[async_trait]
-pub trait DeviceDriver: Debug + Send + Sync {
+pub trait DeviceDriver: Send + Sync {
     /// Get the configuration of this driver instance.
     fn config(&self) -> &DriverConfig;
 
     /// Connect to the underlying device.
-    async fn connect(&mut self) -> DriverResult<()>;
+    fn connect(&mut self) -> DriverResult<()>;
 
     /// Disconnect from the underlying device.
-    async fn disconnect(&mut self) -> DriverResult<()>;
+    fn disconnect(&mut self) -> DriverResult<()>;
 
     /// Check the connection status.
     async fn check_status(&mut self) -> DriverResult<()>; // Returns Ok(()) if connected, Err otherwise

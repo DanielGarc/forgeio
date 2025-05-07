@@ -1,8 +1,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
-use serde::Deserialize;
+use serde::{Serialize, Deserialize};
 
 /// Represents the quality of a tag's value.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Quality {
     Good,
     Uncertain,
@@ -19,7 +19,7 @@ impl Default for Quality {
 }
 
 /// Represents the value, quality, and timestamp of a tag.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TagValue {
     pub value: ValueVariant,
     pub quality: Quality,
@@ -46,7 +46,7 @@ impl TagValue {
 }
 
 /// Possible data types for a tag's value.
-#[derive(Debug, Clone, PartialEq)] // Add PartialEq for comparisons
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)] // Add PartialEq for comparisons
 pub enum ValueVariant {
     Null, // Representing no value or initial state
     Bool(bool),
@@ -58,7 +58,7 @@ pub enum ValueVariant {
 }
 
 /// Represents a single tag in the system.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tag {
     /// Unique path identifying the tag (e.g., "Folder/Device/TagName").
     pub path: String,
@@ -75,7 +75,7 @@ pub struct Tag {
 }
 
 /// Metadata associated with a tag.
-#[derive(Debug, Clone, Default)] // Default trait for easy initialization
+#[derive(Debug, Clone, Default, Serialize, Deserialize)] // Default trait for easy initialization
 pub struct TagMetadata {
     pub description: Option<String>,
     pub eng_unit: Option<String>,

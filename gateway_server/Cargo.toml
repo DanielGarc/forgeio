@@ -13,3 +13,5 @@ config = { version = "0.14", features = ["toml"] } # Configuration loading
 serde = { version = "1.0", features = ["derive"] } # Serialization/Deserialization
 dashmap = "5.5" # Concurrent HashMap
 opcua = "0.12" # OPC UA Client Library
+serde_json = "1.0"  # Added for JSON serialization in API endpoints
+tokio-tungstenite = "0.26.2"  # Added to resolve unresolved import in websocket.rs

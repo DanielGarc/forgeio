@@ -1,5 +1,5 @@
 use crate::drivers::traits::DriverConfig; // Reuse DriverConfig for now
-use config::{Config, ConfigError, Environment, File};
+use config::{Config, ConfigError, File};
 use serde::Deserialize;
 use std::path::Path;
 
