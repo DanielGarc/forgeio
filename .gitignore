@@ -10,3 +10,7 @@
 
 # Ignore other common files
 .DS_Store
+
+# Web UI artifacts
+/webui/node_modules/
+/webui/dist/
