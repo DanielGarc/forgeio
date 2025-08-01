@@ -2,13 +2,15 @@ use crate::drivers::traits::{DeviceDriver, DriverConfig, DriverResult, TagReques
 use crate::tags::structures::{Quality, TagValue, ValueVariant};
 use async_trait::async_trait;
 use opcua::client::prelude::*;
+use opcua::sync::RwLock;
 use opcua::types::{Identifier, NodeId, UAString};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 pub struct OpcUaDriver {
     config: DriverConfig,
     client: Mutex<Option<Client>>,
+    session: Mutex<Option<Arc<RwLock<Session>>>>,
 }
 
 impl OpcUaDriver {
@@ -16,6 +18,7 @@ impl OpcUaDriver {
         Ok(OpcUaDriver {
             config,
             client: Mutex::new(None),
+            session: Mutex::new(None),
         })
     }
 
@@ -112,19 +115,84 @@ impl DeviceDriver for OpcUaDriver {
     }
 
     fn connect(&mut self) -> DriverResult<()> {
+        let mut client_guard = self.client.lock().unwrap();
+        if client_guard.is_some() {
+            return Ok(());
+        }
+
+        let mut client = ClientBuilder::new()
+            .application_name("ForgeIO OPC UA Client")
+            .application_uri("urn:forgeio:client")
+            .trust_server_certs(true)
+            .max_message_size(0)
+            .max_chunk_count(0)
+            .create_sample_keypair(true)
+            .client()
+            .ok_or("failed to build client")?;
+
+        let endpoint: EndpointDescription = (
+            self.config.address.as_str(),
+            "None",
+            MessageSecurityMode::None,
+            UserTokenPolicy::anonymous(),
+        )
+            .into();
+
+        let session = client
+            .connect_to_endpoint(endpoint, IdentityToken::Anonymous)
+            .map_err(|e| format!("failed to connect: {:?}", e))?;
+
+        *client_guard = Some(client);
+        let mut session_guard = self.session.lock().unwrap();
+        *session_guard = Some(session);
         Ok(())
     }
 
     fn disconnect(&mut self) -> DriverResult<()> {
+        if let Some(session) = self.session.lock().unwrap().take() {
+            session.read().disconnect();
+        }
+        *self.client.lock().unwrap() = None;
         Ok(())
     }
 
     async fn check_status(&mut self) -> DriverResult<()> {
-        Ok(())
+        if let Some(session) = self.session.lock().unwrap().as_ref() {
+            let session = session.read();
+            if session.is_connected() {
+                return Ok(());
+            }
+        }
+        Err("Disconnected".into())
     }
 
-    async fn read_tags(&mut self, _tags: &[TagRequest]) -> DriverResult<HashMap<String, TagValue>> {
-        Ok(HashMap::new())
+    async fn read_tags(&mut self, tags: &[TagRequest]) -> DriverResult<HashMap<String, TagValue>> {
+        let session_arc = {
+            let guard = self.session.lock().unwrap();
+            guard.clone().ok_or("not connected")?
+        };
+        let mut session = session_arc.write();
+
+        let mut read_ids = Vec::new();
+        for t in tags {
+            let node_id = Self::parse_node_id(&t.address)?;
+            read_ids.push(ReadValueId {
+                node_id,
+                attribute_id: AttributeId::Value as u32,
+                index_range: UAString::null(),
+                data_encoding: QualifiedName::null(),
+            });
+        }
+
+        let data_values = session
+            .read(&read_ids, TimestampsToReturn::Both, 0.0)
+            .map_err(|e| format!("read error: {:?}", e))?;
+
+        let mut result = HashMap::new();
+        for (req, dv) in tags.iter().zip(data_values.iter()) {
+            result.insert(req.address.clone(), Self::data_value_to_tag_value(dv));
+        }
+        Ok(result)
     }
 
     async fn write_tags(
