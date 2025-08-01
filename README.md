@@ -129,20 +129,26 @@ When deployed at the edge, the runtime leverages the core components for:
    git clone https://github.com/your-org/forgeio.git  # or openforge
    cd forgeio
    ```
-3. **Build & run**
+3. **Configure the gateway**
+
+   A sample `config.toml` is included at the repository root. It defines a dummy
+   OPC UA device and a few example tags. Adjust the settings or replace the file
+   with your own configuration before starting the server.
+
+4. **Build & run**
 
    ```bash
    cargo build
    cargo run --bin gateway_server
    ```
-4. **Launch the design environment**
+5. **Launch the design environment**
 
    ```bash
    cd frontend_design_env
    wasm-pack build
    ```
 
-5. **Run the Admin Dashboard (React/TypeScript)**
+6. **Run the Admin Dashboard (React/TypeScript)**
 
    ```bash
    cd webui
