@@ -1,0 +1,26 @@
+# Example configuration for the ForgeIO Gateway Server
+# This file defines device drivers and the tags to poll from them.
+
+[[devices]]
+id = "opcua1"
+name = "Dummy OPC UA"
+address = "opc.tcp://localhost:4840/freeopcua/server/"
+scan_rate_ms = 1000
+
+[[tags]]
+path = "Dummy/Temperature"
+driver_id = "opcua1"
+address = "ns=2;s=Temperature"
+poll_rate_ms = 1000
+
+[[tags]]
+path = "Dummy/Pressure"
+driver_id = "opcua1"
+address = "ns=2;s=Pressure"
+poll_rate_ms = 1000
+
+[[tags]]
+path = "Dummy/Counter"
+driver_id = "opcua1"
+address = "ns=2;s=Counter"
+poll_rate_ms = 1000
