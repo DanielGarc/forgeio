@@ -19,7 +19,7 @@ impl Default for Quality {
 }
 
 /// Represents the value, quality, and timestamp of a tag.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TagValue {
     pub value: ValueVariant,
     pub quality: Quality,

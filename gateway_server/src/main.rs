@@ -11,18 +11,14 @@ use std::sync::Arc;
 use std::collections::HashMap;
 use tokio::sync::Mutex;
 use tokio::time::{interval, Duration, Instant};
-use config::settings::Settings;
-use tags::structures::{Tag, TagValue, TagMetadata, Quality};
-use tags::engine::TagEngine;
-use drivers::traits::{DeviceDriver, TagRequest};
-use drivers::opcua::OpcUaDriver;
+use gateway_server::config::settings::Settings;
+use gateway_server::tags::structures::{Tag, TagValue, TagMetadata, Quality};
+use gateway_server::tags::engine::TagEngine;
+use gateway_server::drivers::traits::{DeviceDriver, TagRequest};
+use gateway_server::drivers::opcua::OpcUaDriver;
 use serde_json::json;
 
-// Core Modules
-mod drivers;
-mod tags;
-mod config;
-mod api;
+// Modules are defined in the accompanying library crate (lib.rs)
 
 // Potentially other modules like scripting, historian, events etc.
 
