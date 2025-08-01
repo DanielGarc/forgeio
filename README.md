@@ -142,7 +142,30 @@ When deployed at the edge, the runtime leverages the core components for:
    wasm-pack build
    ```
 
+
 Refer to the [docs/](docs/) directory for detailed guides.
+
+### Dummy OPC UA Server for Testing
+
+If you need an OPC UA endpoint for local development, a simple Python script is
+included in `examples/dummy_opcua_server.py`. The script creates a server with a
+few variables that change value every second.
+
+1. Install the required package:
+
+   ```bash
+   pip install asyncua
+   ```
+
+2. Start the server:
+
+   ```bash
+   python examples/dummy_opcua_server.py
+   ```
+
+The server listens on `opc.tcp://localhost:4840/freeopcua/server/` and provides
+`Temperature`, `Pressure`, and `Counter` nodes for testing reads and
+subscriptions.
 
 ---
 
