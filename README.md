@@ -142,6 +142,20 @@ When deployed at the edge, the runtime leverages the core components for:
    wasm-pack build
    ```
 
+5. **Run the Admin Dashboard (React/TypeScript)**
+
+   ```bash
+   cd webui
+   npm install
+   npm run dev
+
+   # Build for production to serve through the gateway
+   npm run build
+   ```
+
+The gateway API now requires HTTP Basic auth with the default credentials
+`admin`/`admin`.
+
 
 Refer to the [docs/](docs/) directory for detailed guides.
 
