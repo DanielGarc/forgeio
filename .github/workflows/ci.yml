@@ -15,4 +15,6 @@ jobs:
           profile: minimal
           override: true
       - name: Run tests
-        run: cargo test --workspace --all-targets --verbose
+        run: cargo test --workspace --all-targets --quiet
+      - name: Run OPC UA driver test
+        run: cargo test -p gateway_server read_tag_from_dummy_server -- --exact --ignored --quiet
