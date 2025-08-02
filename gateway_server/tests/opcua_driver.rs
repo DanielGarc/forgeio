@@ -1,8 +1,8 @@
 use gateway_server::drivers::opcua::OpcUaDriver;
 use gateway_server::drivers::traits::{DeviceDriver, DriverConfig, TagRequest};
-use std::process::{Command, Child};
-use std::time::Duration;
+use std::process::{Child, Command};
 use std::thread::sleep as std_sleep;
+use std::time::Duration;
 use tokio::runtime::Runtime;
 
 struct ServerHandle(Child);
@@ -40,6 +40,11 @@ fn read_tag_from_dummy_server() {
         name: "srv".into(),
         address: "opc.tcp://127.0.0.1:4840/freeopcua/server/".into(),
         scan_rate_ms: 1000,
+        application_name: Some("TestClient".into()),
+        application_uri: None,
+        session_name: Some("TestSession".into()),
+        max_message_size: None,
+        max_chunk_count: None,
     };
     let mut driver = OpcUaDriver::new(config).unwrap();
     if let Err(e) = driver.connect() {
@@ -47,10 +52,24 @@ fn read_tag_from_dummy_server() {
         return;
     }
 
-    let requests = vec![TagRequest { address: "ns=2;i=1".into() }];
+
+    let requests = vec![
+        TagRequest {
+            address: "ns=2;s=Temperature".into(),
+        },
+        TagRequest {
+            address: "ns=2;s=Pressure".into(),
+        },
+        TagRequest {
+            address: "ns=2;s=Counter".into(),
+        },
+    ];
     let rt = Runtime::new().unwrap();
     let result = rt.block_on(driver.read_tags(&requests)).unwrap();
-    assert!(result.contains_key("ns=2;i=1"));
+    assert!(result.contains_key("ns=2;s=Temperature"));
+    assert!(result.contains_key("ns=2;s=Pressure"));
+    assert!(result.contains_key("ns=2;s=Counter"));
+
 
     driver.disconnect().unwrap();
 }
