@@ -3,9 +3,11 @@ use crate::tags::structures::{Quality, TagValue, ValueVariant};
 use async_trait::async_trait;
 use opcua::client::prelude::*;
 use opcua::sync::RwLock;
-use opcua::types::{Identifier, NodeId, UAString};
+use opcua::types::{NodeId, UAString};
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
+use tracing::{info, warn};
 
 pub struct OpcUaDriver {
     config: DriverConfig,
@@ -25,27 +27,8 @@ impl OpcUaDriver {
     fn parse_node_id(
         node_id_str: &str,
     ) -> Result<NodeId, Box<dyn std::error::Error + Send + Sync>> {
-        let parts: Vec<&str> = node_id_str.split(';').collect();
-        if parts.len() != 2 {
-            return Err("Invalid NodeId format".into());
-        }
-        let ns_part = parts[0].trim_start_matches("ns=").parse::<u16>()?;
-        let identifier_part = parts[1];
-        if identifier_part.starts_with("s=") {
-            Ok(NodeId::new(
-                ns_part,
-                Identifier::String(opcua::types::UAString::from(
-                    identifier_part.trim_start_matches("s=").to_string(),
-                )),
-            ))
-        } else if identifier_part.starts_with("i=") {
-            Ok(NodeId::new(
-                ns_part,
-                Identifier::Numeric(identifier_part.trim_start_matches("i=").parse::<u32>()?),
-            ))
-        } else {
-            Err("Unsupported NodeId identifier format".into())
-        }
+        NodeId::from_str(node_id_str)
+            .map_err(|e| format!("Invalid NodeId '{}': {:?}", node_id_str, e).into())
     }
 
     fn data_value_to_tag_value(dv: &DataValue) -> TagValue {
@@ -93,10 +76,6 @@ impl OpcUaDriver {
             _ => Variant::Empty,
         }
     }
-
-    fn sync_method(&self) -> Result<(), Box<dyn std::error::Error>> {
-        Ok(())
-    }
 }
 
 // impl std::fmt::Debug for OpcUaDriver {
@@ -114,27 +93,27 @@ impl DeviceDriver for OpcUaDriver {
         &self.config
     }
 
-    fn connect(&mut self) -> DriverResult<()> {
-        let mut client_guard = self.client.lock().unwrap();
-        if client_guard.is_some() {
+    async fn connect(&self) -> DriverResult<()> {
+        if self.client.lock().unwrap().is_some() {
             return Ok(());
         }
 
+        let cfg = self.config.clone();
         let mut builder = ClientBuilder::new()
             .application_name(
-                self.config
+                cfg
                     .application_name
                     .as_deref()
                     .unwrap_or("ForgeIO OPC UA Client"),
             )
             .application_uri(
-                self.config
+                cfg
                     .application_uri
                     .as_deref()
                     .unwrap_or("urn:forgeio:client"),
             )
             .session_name(
-                self.config
+                cfg
                     .session_name
                     .as_deref()
                     .unwrap_or("ForgeIOSession"),
@@ -142,43 +121,47 @@ impl DeviceDriver for OpcUaDriver {
             .trust_server_certs(true)
             .create_sample_keypair(true);
 
-        if let Some(size) = self.config.max_message_size {
-            builder = builder.max_message_size(size);
-        }
-        if let Some(chunks) = self.config.max_chunk_count {
-            builder = builder.max_chunk_count(chunks);
-        }
+        let size = cfg.max_message_size.unwrap_or(0);
+        let chunks = cfg.max_chunk_count.unwrap_or(0);
+        builder = builder.max_message_size(size).max_chunk_count(chunks);
 
-        let mut client = builder.client().ok_or("failed to build client")?;
+        let address = cfg.address.clone();
+        let (client, session) = tokio::task::block_in_place(|| {
+            let mut client = builder.client().ok_or("failed to build client")?;
+            let endpoint: EndpointDescription = (
+                address.as_str(),
+                "None",
+                MessageSecurityMode::None,
+                UserTokenPolicy::anonymous(),
+            )
+                .into();
+            let session = client
+                .connect_to_endpoint(endpoint, IdentityToken::Anonymous)
+                .map_err(|e| format!("failed to connect: {:?}", e))?;
+            Ok::<_, Box<dyn std::error::Error + Send + Sync>>((client, session))
+        })?;
 
-        let endpoint: EndpointDescription = (
-            self.config.address.as_str(),
-            "None",
-            MessageSecurityMode::None,
-            UserTokenPolicy::anonymous(),
-        )
-            .into();
+        info!("OPC UA driver connected to {}", self.config.address);
 
-        let session = client
-            .connect_to_endpoint(endpoint, IdentityToken::Anonymous)
-            .map_err(|e| format!("failed to connect: {:?}", e))?;
-        println!("OPC UA driver connected to {}", self.config.address);
-
-        *client_guard = Some(client);
-        let mut session_guard = self.session.lock().unwrap();
-        *session_guard = Some(session);
+        *self.client.lock().unwrap() = Some(client);
+        *self.session.lock().unwrap() = Some(session);
         Ok(())
     }
 
-    fn disconnect(&mut self) -> DriverResult<()> {
-        if let Some(session) = self.session.lock().unwrap().take() {
-            session.read().disconnect();
+    async fn disconnect(&self) -> DriverResult<()> {
+        let session = { self.session.lock().unwrap().take() };
+        if let Some(session) = session {
+            tokio::task::spawn_blocking(move || {
+                session.read().disconnect();
+            })
+            .await
+            .map_err(|e| format!("disconnect join error: {e}"))?;
         }
         *self.client.lock().unwrap() = None;
         Ok(())
     }
 
-    async fn check_status(&mut self) -> DriverResult<()> {
+    async fn check_status(&self) -> DriverResult<()> {
         if let Some(session) = self.session.lock().unwrap().as_ref() {
             let session = session.read();
             if session.is_connected() {
@@ -188,12 +171,12 @@ impl DeviceDriver for OpcUaDriver {
         Err("Disconnected".into())
     }
 
-    async fn read_tags(&mut self, tags: &[TagRequest]) -> DriverResult<HashMap<String, TagValue>> {
+    async fn read_tags(&self, tags: &[TagRequest]) -> DriverResult<HashMap<String, TagValue>> {
         let session_arc = {
             let guard = self.session.lock().unwrap();
             guard.clone().ok_or("not connected")?
         };
-        let mut session = session_arc.write();
+        let session = session_arc.write();
 
         let mut read_ids = Vec::new();
         for t in tags {
@@ -210,7 +193,7 @@ impl DeviceDriver for OpcUaDriver {
             .read(&read_ids, TimestampsToReturn::Both, 0.0)
             .map_err(|e| format!("read error: {:?}", e))?;
 
-        println!(
+        info!(
             "OPC UA read {} values from {}",
             data_values.len(),
             self.config.address
@@ -220,16 +203,16 @@ impl DeviceDriver for OpcUaDriver {
             match dv.status {
                 Some(status) if status.is_good() => {
                     if let Some(val) = &dv.value {
-                        println!("Read {} = {:?}", req.address, val);
+                        info!("Read {} = {:?}", req.address, val);
                     } else {
-                        println!("Read {} with empty value", req.address);
+                        info!("Read {} with empty value", req.address);
                     }
                 }
                 Some(status) => {
-                    println!("WARN: Bad status {:?} for node {}", status, req.address);
+                    warn!("Bad status {:?} for node {}", status, req.address);
                 }
                 None => {
-                    println!("WARN: No status for node {}", req.address);
+                    warn!("No status for node {}", req.address);
                 }
             }
         }
@@ -242,7 +225,7 @@ impl DeviceDriver for OpcUaDriver {
     }
 
     async fn write_tags(
-        &mut self,
+        &self,
         _tags: HashMap<String, TagValue>,
     ) -> DriverResult<HashMap<String, TagValue>> {
         Ok(HashMap::new())

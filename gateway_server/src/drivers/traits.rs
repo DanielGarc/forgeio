@@ -42,23 +42,23 @@ pub trait DeviceDriver: Send + Sync {
     fn config(&self) -> &DriverConfig;
 
     /// Connect to the underlying device.
-    fn connect(&mut self) -> DriverResult<()>;
+    async fn connect(&self) -> DriverResult<()>;
 
     /// Disconnect from the underlying device.
-    fn disconnect(&mut self) -> DriverResult<()>;
+    async fn disconnect(&self) -> DriverResult<()>;
 
     /// Check the connection status.
-    async fn check_status(&mut self) -> DriverResult<()>; // Returns Ok(()) if connected, Err otherwise
+    async fn check_status(&self) -> DriverResult<()>; // Returns Ok(()) if connected, Err otherwise
 
     /// Read a batch of tags.
     /// Takes a list of tag addresses and returns a map of address to TagValue.
-    async fn read_tags(&mut self, tags: &[TagRequest]) -> DriverResult<HashMap<String, TagValue>>;
+    async fn read_tags(&self, tags: &[TagRequest]) -> DriverResult<HashMap<String, TagValue>>;
 
     /// Write a batch of tags.
     /// Takes a map of tag address to the TagValue to write.
     /// Returns a map of address to TagValue representing the result (e.g., success or error status per tag).
     async fn write_tags(
-        &mut self,
+        &self,
         tags: HashMap<String, TagValue>,
     ) -> DriverResult<HashMap<String, TagValue>>;
 

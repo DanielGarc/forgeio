@@ -10,7 +10,7 @@ fn start_server() -> Child {
         .args(["-m", "pip", "install", "--quiet", "asyncua"])
         .status();
     let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.pop(); // move out of gateway_server
+    path.pop();
     path.push("examples/dummy_opcua_server.py");
     Command::new("python")
         .arg(path)
@@ -24,7 +24,7 @@ fn start_server() -> Child {
 #[ignore]
 fn read_tag_from_dummy_server() {
     let mut server = start_server();
-    std_sleep(Duration::from_secs(2));
+    std_sleep(Duration::from_secs(5));
 
     let config = DriverConfig {
         id: "srv".into(),
@@ -37,8 +37,10 @@ fn read_tag_from_dummy_server() {
         max_message_size: None,
         max_chunk_count: None,
     };
-    let mut driver = OpcUaDriver::new(config).unwrap();
-    driver.connect().unwrap();
+    let driver = OpcUaDriver::new(config).unwrap();
+    let rt = Runtime::new().unwrap();
+    rt.block_on(driver.connect()).unwrap();
+    rt.block_on(driver.check_status()).unwrap();
 
     let requests = vec![
         TagRequest {
@@ -51,12 +53,11 @@ fn read_tag_from_dummy_server() {
             address: "ns=2;s=Counter".into(),
         },
     ];
-    let rt = Runtime::new().unwrap();
     let result = rt.block_on(driver.read_tags(&requests)).unwrap();
     assert!(result.contains_key("ns=2;s=Temperature"));
     assert!(result.contains_key("ns=2;s=Pressure"));
     assert!(result.contains_key("ns=2;s=Counter"));
 
-    driver.disconnect().unwrap();
+    let _ = rt.block_on(driver.disconnect());
     let _ = server.kill();
 }
