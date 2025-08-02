@@ -132,8 +132,10 @@ When deployed at the edge, the runtime leverages the core components for:
 3. **Configure the gateway**
 
    A sample `config.toml` is included at the repository root. It defines a dummy
-   OPC UA device and a few example tags. Adjust the settings or replace the file
-   with your own configuration before starting the server.
+   OPC UA device and a few example tags. The device section now includes
+   parameters such as `application_name`, `session_name`, and message limits
+   used when the OPC UA client is created. Adjust these settings or replace the
+   file with your own configuration before starting the server.
 
 4. **Build & run**
 
@@ -177,11 +179,22 @@ few variables that change value every second.
    pip install asyncua
    ```
 
-2. Start the server:
+2. Start the server (the Rust gateway does **not** start it automatically):
 
    ```bash
    python examples/dummy_opcua_server.py
    ```
+
+3. With the Python server running, launch the gateway using the default
+   `config.toml`:
+
+   ```bash
+   cargo run --bin gateway_server
+   ```
+
+   The gateway will connect to the dummy OPC UA server and log the
+   connection status. As the polling loop runs you should see log messages
+   showing each read cycle and whether the configured tags were found.
 
 The server listens on `opc.tcp://localhost:4840/freeopcua/server/` and provides
 `Temperature`, `Pressure`, and `Counter` nodes for testing reads and
