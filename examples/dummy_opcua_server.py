@@ -10,6 +10,7 @@ async def main():
 
     uri = "http://forgeio/dummy/"
     idx = await server.register_namespace(uri)
+    print(f"Dummy OPC UA namespace index: {idx}")
     objects = server.nodes.objects
 
     temperature = await objects.add_variable(idx, "Temperature", 20.0)

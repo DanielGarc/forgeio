@@ -120,15 +120,36 @@ impl DeviceDriver for OpcUaDriver {
             return Ok(());
         }
 
-        let mut client = ClientBuilder::new()
-            .application_name("ForgeIO OPC UA Client")
-            .application_uri("urn:forgeio:client")
+        let mut builder = ClientBuilder::new()
+            .application_name(
+                self.config
+                    .application_name
+                    .as_deref()
+                    .unwrap_or("ForgeIO OPC UA Client"),
+            )
+            .application_uri(
+                self.config
+                    .application_uri
+                    .as_deref()
+                    .unwrap_or("urn:forgeio:client"),
+            )
+            .session_name(
+                self.config
+                    .session_name
+                    .as_deref()
+                    .unwrap_or("ForgeIOSession"),
+            )
             .trust_server_certs(true)
-            .max_message_size(0)
-            .max_chunk_count(0)
-            .create_sample_keypair(true)
-            .client()
-            .ok_or("failed to build client")?;
+            .create_sample_keypair(true);
+
+        if let Some(size) = self.config.max_message_size {
+            builder = builder.max_message_size(size);
+        }
+        if let Some(chunks) = self.config.max_chunk_count {
+            builder = builder.max_chunk_count(chunks);
+        }
+
+        let mut client = builder.client().ok_or("failed to build client")?;
 
         let endpoint: EndpointDescription = (
             self.config.address.as_str(),
@@ -141,6 +162,7 @@ impl DeviceDriver for OpcUaDriver {
         let session = client
             .connect_to_endpoint(endpoint, IdentityToken::Anonymous)
             .map_err(|e| format!("failed to connect: {:?}", e))?;
+        println!("OPC UA driver connected to {}", self.config.address);
 
         *client_guard = Some(client);
         let mut session_guard = self.session.lock().unwrap();
@@ -187,6 +209,30 @@ impl DeviceDriver for OpcUaDriver {
         let data_values = session
             .read(&read_ids, TimestampsToReturn::Both, 0.0)
             .map_err(|e| format!("read error: {:?}", e))?;
+
+        println!(
+            "OPC UA read {} values from {}",
+            data_values.len(),
+            self.config.address
+        );
+
+        for (req, dv) in tags.iter().zip(data_values.iter()) {
+            match dv.status {
+                Some(status) if status.is_good() => {
+                    if let Some(val) = &dv.value {
+                        println!("Read {} = {:?}", req.address, val);
+                    } else {
+                        println!("Read {} with empty value", req.address);
+                    }
+                }
+                Some(status) => {
+                    println!("WARN: Bad status {:?} for node {}", status, req.address);
+                }
+                None => {
+                    println!("WARN: No status for node {}", req.address);
+                }
+            }
+        }
 
         let mut result = HashMap::new();
         for (req, dv) in tags.iter().zip(data_values.iter()) {
