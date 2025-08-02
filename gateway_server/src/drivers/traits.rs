@@ -1,24 +1,34 @@
+use crate::tags::structures::TagValue;
 use async_trait::async_trait;
-use std::collections::HashMap;
-use std::error::Error;
 use serde::Deserialize; // Added for config
-use crate::tags::structures::TagValue;  // Imported from structures to avoid duplication
+use std::collections::HashMap;
+use std::error::Error; // Imported from structures to avoid duplication
 
 /// Common configuration for all drivers
 #[derive(Debug, Clone, Deserialize)] // Added Deserialize and Debug
 pub struct DriverConfig {
-    pub id: String, // Unique identifier for this device instance
-    pub name: String, // User-friendly name
-    pub address: String, // e.g., IP address, COM port, connection string
+    pub id: String,        // Unique identifier for this device instance
+    pub name: String,      // User-friendly name
+    pub address: String,   // e.g., IP address, COM port, connection string
     pub scan_rate_ms: u64, // How often to poll tags (if applicable)
-    // Add other common fields: timeout, retries etc.
+    // Additional optional OPC UA client parameters
+    #[serde(default)]
+    pub application_name: Option<String>,
+    #[serde(default)]
+    pub application_uri: Option<String>,
+    #[serde(default)]
+    pub session_name: Option<String>,
+    #[serde(default)]
+    pub max_message_size: Option<usize>,
+    #[serde(default)]
+    pub max_chunk_count: Option<usize>,
 }
 
 /// Represents a request to read or write a tag
-#[derive( Clone)]
+#[derive(Clone)]
 pub struct TagRequest {
     pub address: String, // Protocol-specific tag address (e.g., "ns=1;s=MyTag", "40001", "Topic/Subtopic")
-    // Potentially add data type hint
+                         // Potentially add data type hint
 }
 
 // Type alias for results from driver operations
@@ -47,7 +57,10 @@ pub trait DeviceDriver: Send + Sync {
     /// Write a batch of tags.
     /// Takes a map of tag address to the TagValue to write.
     /// Returns a map of address to TagValue representing the result (e.g., success or error status per tag).
-    async fn write_tags(&mut self, tags: HashMap<String, TagValue>) -> DriverResult<HashMap<String, TagValue>>;
+    async fn write_tags(
+        &mut self,
+        tags: HashMap<String, TagValue>,
+    ) -> DriverResult<HashMap<String, TagValue>>;
 
     // TODO: Add methods for subscription-based updates if the protocol supports it
     // async fn subscribe_tags(&mut self, tags: &[TagRequest]) -> DriverResult<()>;
