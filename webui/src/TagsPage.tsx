@@ -13,8 +13,10 @@ export default function TagsPage() {
   const [tags, setTags] = useState<any[]>([])
   const [error, setError] = useState<string | null>(null)
 
+  const headers = { Authorization: 'Basic ' + btoa('admin:admin') }
+
   useEffect(() => {
-    fetch('/tags')
+    fetch('/tags', { headers })
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch tags')
         return res.json()

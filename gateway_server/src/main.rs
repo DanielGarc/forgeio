@@ -19,10 +19,18 @@ use tracing::{error, info, warn};
 
 // Potentially other modules like scripting, historian, events etc.
 
+#[derive(Clone)]
+struct AppState {
+    tag_engine: Arc<TagEngine>,
+    driver_count: usize,
+    start_time: Instant,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_logging(None);
     info!("ForgeIO Gateway Server starting...");
+    let start_time = Instant::now();
 
     // --- Load Configuration ---
     let config_path = Path::new("config.toml");
@@ -213,10 +221,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Start API Server ---
     info!("Starting API server...");
+    let app_state = AppState {
+        tag_engine: Arc::clone(&tag_engine_arc),
+        driver_count: drivers_arc.len(),
+        start_time,
+    };
     let app = Router::new()
         .route("/api/health", get(root))
+        .route("/api/stats", get(stats))
         .route("/tags", get(get_tags)) // New route for tags
-        .with_state(tag_engine_arc)
+        .with_state(app_state)
         .fallback_service(
             ServeDir::new("webui/dist").not_found_service(ServeFile::new("webui/dist/index.html")),
         )
@@ -237,7 +251,17 @@ async fn root() -> &'static str {
     "ForgeIO Gateway Server Running"
 }
 
-async fn get_tags(State(tag_engine): State<Arc<TagEngine>>) -> impl IntoResponse {
-    let tags = tag_engine.get_all_tags().await;
+async fn get_tags(State(state): State<AppState>) -> impl IntoResponse {
+    let tags = state.tag_engine.get_all_tags().await;
     Json(json!(tags))
+}
+
+async fn stats(State(state): State<AppState>) -> impl IntoResponse {
+    let tag_count = state.tag_engine.get_all_tag_paths().len();
+    let uptime = state.start_time.elapsed().as_secs();
+    Json(json!({
+        "uptime_seconds": uptime,
+        "tag_count": tag_count,
+        "driver_count": state.driver_count,
+    }))
 }

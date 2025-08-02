@@ -161,6 +161,12 @@ When deployed at the edge, the runtime leverages the core components for:
    npm run build
    ```
 
+7. **Run Gateway and Admin UI Together**
+
+   ```bash
+   ./run_gateway_and_admin.sh
+   ```
+
 The gateway API now requires HTTP Basic auth with the default credentials
 `admin`/`admin`.
 
