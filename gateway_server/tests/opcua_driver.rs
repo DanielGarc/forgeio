@@ -1,5 +1,5 @@
 use gateway_server::drivers::opcua::OpcUaDriver;
-use gateway_server::drivers::traits::{DeviceDriver, DriverConfig, TagRequest};
+use gateway_server::drivers::traits::{DeviceDriver, DriverConfig};
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 use std::{path::PathBuf, thread::sleep};
@@ -36,7 +36,7 @@ impl Drop for DummyServer {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn read_tag_from_dummy_server() {
+async fn browse_tags_from_dummy_server() {
     let _ = tracing_subscriber::fmt::try_init();
     let _server = DummyServer::start();
     let config = DriverConfig {
@@ -58,21 +58,10 @@ async fn read_tag_from_dummy_server() {
     driver.connect().await.unwrap();
     driver.check_status().await.unwrap();
 
-    let requests = vec![
-        TagRequest {
-            address: "ns=2;s=Temperature".into(),
-        },
-        TagRequest {
-            address: "ns=2;s=Pressure".into(),
-        },
-        TagRequest {
-            address: "ns=2;s=Counter".into(),
-        },
-    ];
-    let result = driver.read_tags(&requests).await.unwrap();
-    assert!(result.contains_key("ns=2;s=Temperature"));
-    assert!(result.contains_key("ns=2;s=Pressure"));
-    assert!(result.contains_key("ns=2;s=Counter"));
+    let tags = driver.browse_node("ns=0;i=85").unwrap();
+    assert!(tags.contains(&"Temperature".to_string()));
+    assert!(tags.contains(&"Pressure".to_string()));
+    assert!(tags.contains(&"Counter".to_string()));
 
     driver.disconnect().await.unwrap();
 }
