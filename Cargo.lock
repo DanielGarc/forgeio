@@ -504,6 +504,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-tungstenite",
+ "toml",
  "tower-http",
  "tracing",
  "tracing-subscriber",

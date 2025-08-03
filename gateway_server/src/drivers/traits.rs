@@ -1,11 +1,11 @@
 use crate::tags::structures::TagValue;
 use async_trait::async_trait;
-use serde::Deserialize; // Added for config
+use serde::{Deserialize, Serialize}; // Added for config
 use std::collections::HashMap;
 use std::error::Error; // Imported from structures to avoid duplication
 
 /// Common configuration for all drivers
-#[derive(Debug, Clone, Deserialize)] // Added Deserialize and Debug
+#[derive(Debug, Clone, Deserialize, Serialize)] // Added Deserialize, Serialize, and Debug
 pub struct DriverConfig {
     pub id: String,        // Unique identifier for this device instance
     pub name: String,      // User-friendly name
