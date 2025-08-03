@@ -2,7 +2,7 @@
 
 > An open-source, Rust-based SCADA & Machine Interface platform
 
-ForgeIO (also known as OpenForge) leverages Rust’s performance, safety, and concurrency to deliver a modern, high-performance solution for industrial automation. It's designed for demanding environments requiring scalability to millions of tags and robust data handling, featuring a comprehensive visual design environment and flexible edge deployment capabilities.
+ForgeIO (random name suggested by AI) leverages Rust’s performance, safety, and concurrency to deliver a modern, high-performance solution for industrial automation. It's designed for demanding environments requiring scalability to millions of tags and robust data handling, featuring a comprehensive visual design environment and flexible edge deployment capabilities.
 
 ---
 
