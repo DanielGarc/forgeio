@@ -1,9 +1,12 @@
 use crate::drivers::traits::DriverConfig; // Reuse DriverConfig for now
 use config::{Config, ConfigError, File};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::fs;
+use std::io;
+use toml;
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct TagConfig {
     pub path: String,           // Unique path for the tag (e.g., "Folder/Sub/MyTag")
     pub driver_id: String,      // ID of the driver this tag belongs to (must match a device ID)
@@ -12,7 +15,7 @@ pub struct TagConfig {
                             // TODO: Add metadata, scaling, deadband etc. later
 }
 
-#[derive(Debug, Deserialize, Clone)] // Clone needed for passing around
+#[derive(Debug, Deserialize, Serialize, Clone)] // Clone needed for passing around
 pub struct Settings {
     // Maybe add general settings like server port, log level etc. later
     // pub server_port: u16,
@@ -34,5 +37,11 @@ impl Settings {
 
         // Deserialize the entire configuration
         s.try_deserialize()
+    }
+
+    pub fn save(&self, config_path: &Path) -> io::Result<()> {
+        let toml_string = toml::to_string_pretty(self)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        fs::write(config_path, toml_string)
     }
 }

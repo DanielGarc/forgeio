@@ -1,4 +1,4 @@
-use axum::{extract::State, response::IntoResponse, routing::get, Json, Router};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::get, Json, Router};
 use gateway_server::config::settings::Settings;
 use gateway_server::drivers::opcua::OpcUaDriver;
 use gateway_server::drivers::traits::{DeviceDriver, TagRequest};
@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use tokio::time::{interval, Duration, Instant};
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::validate_request::ValidateRequestHeaderLayer;
@@ -24,6 +25,7 @@ struct AppState {
     tag_engine: Arc<TagEngine>,
     driver_count: usize,
     start_time: Instant,
+    settings: Arc<RwLock<Settings>>,
 }
 
 #[tokio::main]
@@ -49,6 +51,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         settings.devices.len(),
         settings.tags.len()
     );
+
+    let settings_arc = Arc::new(RwLock::new(settings.clone()));
 
     // --- Initialize Tag Engine ---
     let tag_engine = TagEngine::new();
@@ -225,11 +229,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tag_engine: Arc::clone(&tag_engine_arc),
         driver_count: drivers_arc.len(),
         start_time,
+        settings: Arc::clone(&settings_arc),
     };
     let app = Router::new()
         .route("/api/health", get(root))
         .route("/api/stats", get(stats))
-        .route("/tags", get(get_tags)) // New route for tags
+        .route("/tags", get(get_tags))
+        .route("/api/config", get(get_config).put(update_config))
         .with_state(app_state)
         .fallback_service(
             ServeDir::new("webui/dist").not_found_service(ServeFile::new("webui/dist/index.html")),
@@ -254,6 +260,26 @@ async fn root() -> &'static str {
 async fn get_tags(State(state): State<AppState>) -> impl IntoResponse {
     let tags = state.tag_engine.get_all_tags().await;
     Json(json!(tags))
+}
+
+async fn get_config(State(state): State<AppState>) -> impl IntoResponse {
+    let cfg = state.settings.read().await.clone();
+    Json(cfg)
+}
+
+async fn update_config(
+    State(state): State<AppState>,
+    Json(new_cfg): Json<Settings>,
+) -> impl IntoResponse {
+    if let Err(e) = new_cfg.save(Path::new("config.toml")) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": e.to_string() })),
+        );
+    }
+    let mut cfg_lock = state.settings.write().await;
+    *cfg_lock = new_cfg;
+    (StatusCode::OK, Json(json!({ "status": "ok" })))
 }
 
 async fn stats(State(state): State<AppState>) -> impl IntoResponse {
