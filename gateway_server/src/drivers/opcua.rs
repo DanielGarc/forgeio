@@ -78,6 +78,40 @@ impl OpcUaDriver {
             _ => Variant::Empty,
         }
     }
+
+    pub fn browse_node(&self, node_id_str: &str) -> DriverResult<Vec<String>> {
+        let session_arc = {
+            let guard = self.session.lock().unwrap();
+            guard.clone().ok_or("not connected")?
+        };
+
+        let node_id = Self::parse_node_id(node_id_str)?;
+        let browse_desc = BrowseDescription {
+            node_id,
+            browse_direction: BrowseDirection::Forward,
+            reference_type_id: ReferenceTypeId::HierarchicalReferences.into(),
+            include_subtypes: true,
+            node_class_mask: 0,
+            result_mask: BrowseResultMask::All as u32,
+        };
+
+        let session = session_arc.write();
+        let results = session
+            .browse(&[browse_desc])
+            .map_err(|e| format!("browse error: {:?}", e))?;
+
+        let mut names = Vec::new();
+        if let Some(res) = results {
+            for r in res {
+                if let Some(refs) = r.references {
+                    for reference in refs {
+                        names.push(reference.browse_name.name.to_string());
+                    }
+                }
+            }
+        }
+        Ok(names)
+    }
 }
 
 // impl std::fmt::Debug for OpcUaDriver {
