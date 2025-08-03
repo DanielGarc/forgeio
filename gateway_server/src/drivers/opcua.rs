@@ -7,6 +7,8 @@ use opcua::types::{NodeId, UAString};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tokio::time::sleep;
 use tracing::{info, warn};
 
 pub struct OpcUaDriver {
@@ -99,53 +101,105 @@ impl DeviceDriver for OpcUaDriver {
         }
 
         let cfg = self.config.clone();
-        let mut builder = ClientBuilder::new()
-            .application_name(
-                cfg
-                    .application_name
-                    .as_deref()
-                    .unwrap_or("ForgeIO OPC UA Client"),
-            )
-            .application_uri(
-                cfg
-                    .application_uri
-                    .as_deref()
-                    .unwrap_or("urn:forgeio:client"),
-            )
-            .session_name(
-                cfg
-                    .session_name
-                    .as_deref()
-                    .unwrap_or("ForgeIOSession"),
-            )
-            .trust_server_certs(true)
-            .create_sample_keypair(true);
+        let max_retries = cfg.connect_retry_attempts.unwrap_or(0);
+        let mut delay = cfg.connect_retry_delay_ms.unwrap_or(0);
+        let backoff = cfg.connect_retry_backoff.unwrap_or(2.0);
+        let timeout_ms = cfg.connect_timeout_ms.unwrap_or(5_000);
+        let mut attempt = 0;
 
-        let size = cfg.max_message_size.unwrap_or(0);
-        let chunks = cfg.max_chunk_count.unwrap_or(0);
-        builder = builder.max_message_size(size).max_chunk_count(chunks);
+        loop {
+            let cfg_clone = cfg.clone();
+            let address = cfg_clone.address.clone();
+            let fut = tokio::task::spawn_blocking(move || {
+                let builder = ClientBuilder::new()
+                    .application_name(
+                        cfg_clone
+                            .application_name
+                            .as_deref()
+                            .unwrap_or("ForgeIO OPC UA Client"),
+                    )
+                    .application_uri(
+                        cfg_clone
+                            .application_uri
+                            .as_deref()
+                            .unwrap_or("urn:forgeio:client"),
+                    )
+                    .session_name(
+                        cfg_clone
+                            .session_name
+                            .as_deref()
+                            .unwrap_or("ForgeIOSession"),
+                    )
+                    .trust_server_certs(true)
+                    .create_sample_keypair(true)
+                    .max_message_size(cfg_clone.max_message_size.unwrap_or(0))
+                    .max_chunk_count(cfg_clone.max_chunk_count.unwrap_or(0));
+                let mut client = builder.client().ok_or("failed to build client")?;
+                let endpoint: EndpointDescription = (
+                    address.as_str(),
+                    "None",
+                    MessageSecurityMode::None,
+                    UserTokenPolicy::anonymous(),
+                )
+                    .into();
+                let session = client
+                    .connect_to_endpoint(endpoint, IdentityToken::Anonymous)
+                    .map_err(|e| format!("failed to connect: {:?}", e))?;
+                Ok::<_, Box<dyn std::error::Error + Send + Sync>>((client, session))
+            });
 
-        let address = cfg.address.clone();
-        let (client, session) = tokio::task::block_in_place(|| {
-            let mut client = builder.client().ok_or("failed to build client")?;
-            let endpoint: EndpointDescription = (
-                address.as_str(),
-                "None",
-                MessageSecurityMode::None,
-                UserTokenPolicy::anonymous(),
-            )
-                .into();
-            let session = client
-                .connect_to_endpoint(endpoint, IdentityToken::Anonymous)
-                .map_err(|e| format!("failed to connect: {:?}", e))?;
-            Ok::<_, Box<dyn std::error::Error + Send + Sync>>((client, session))
-        })?;
+            let attempt_result = tokio::time::timeout(Duration::from_millis(timeout_ms), fut).await;
 
-        info!("OPC UA driver connected to {}", self.config.address);
+            match attempt_result {
+                Ok(join_res) => match join_res {
+                    Ok(connect_res) => match connect_res {
+                        Ok((client, session)) => {
+                            info!("OPC UA driver connected to {}", self.config.address);
+                            *self.client.lock().unwrap() = Some(client);
+                            *self.session.lock().unwrap() = Some(session);
+                            return Ok(());
+                        }
+                        Err(e) if attempt < max_retries => {
+                            warn!(
+                                "OPC UA connection attempt {} failed: {}. Retrying in {} ms",
+                                attempt + 1,
+                                e,
+                                delay
+                            );
+                        }
+                        Err(e) => return Err(e),
+                    },
+                    Err(e) if attempt < max_retries => {
+                        warn!(
+                            "OPC UA connection attempt {} join error: {}. Retrying in {} ms",
+                            attempt + 1,
+                            e,
+                            delay
+                        );
+                    }
+                    Err(e) => return Err(Box::new(e)),
+                },
+                Err(_) if attempt < max_retries => {
+                    warn!(
+                        "OPC UA connection attempt {} timed out after {} ms. Retrying in {} ms",
+                        attempt + 1,
+                        timeout_ms,
+                        delay
+                    );
+                }
+                Err(_) => {
+                    return Err(
+                        format!("connection attempt timed out after {} ms", timeout_ms).into(),
+                    )
+                }
+            }
 
-        *self.client.lock().unwrap() = Some(client);
-        *self.session.lock().unwrap() = Some(session);
-        Ok(())
+            if delay > 0 {
+                sleep(Duration::from_millis(delay)).await;
+                delay = (delay as f64 * backoff) as u64;
+            }
+            attempt += 1;
+        }
     }
 
     async fn disconnect(&self) -> DriverResult<()> {

@@ -133,9 +133,12 @@ When deployed at the edge, the runtime leverages the core components for:
 
    A sample `config.toml` is included at the repository root. It defines a dummy
    OPC UA device and a few example tags. The device section now includes
-   parameters such as `application_name`, `session_name`, and message limits
-   used when the OPC UA client is created. Adjust these settings or replace the
-   file with your own configuration before starting the server.
+   parameters such as `application_name`, `session_name`, connection retry
+   behavior, and message limits used when the OPC UA client is created. The
+   retry logic can be tuned with `connect_retry_attempts`, `connect_retry_delay_ms`,
+   `connect_retry_backoff`, and a per-attempt timeout `connect_timeout_ms`.
+   Adjust these settings or replace the file with your own configuration before
+   starting the server.
 
 4. **Build & run**
 
@@ -198,11 +201,18 @@ few variables that change value every second.
    cargo run --bin gateway_server
    ```
 
+4. To exercise the built-in connection retry logic against the dummy server,
+   run the included integration test:
+
+   ```bash
+   cargo test -p gateway_server read_tag_from_dummy_server -- --nocapture
+   ```
+
    The gateway will connect to the dummy OPC UA server and log the
    connection status. As the polling loop runs you should see log messages
    showing each read cycle and whether the configured tags were found.
 
-The server listens on `opc.tcp://localhost:4840/freeopcua/server/` and provides
+The server listens on `opc.tcp://127.0.0.1:4840/freeopcua/server/` and provides
 `Temperature`, `Pressure`, and `Counter` nodes for testing reads and
 subscriptions.
 

@@ -3,19 +3,23 @@
 #
 # The default OPC UA device configuration assumes you are running the
 # Python test server located at `examples/dummy_opcua_server.py`. The
-# server listens on `opc.tcp://localhost:4840/freeopcua/server/` and
+# server listens on `opc.tcp://127.0.0.1:4840/freeopcua/server/` and
 # exposes `Temperature`, `Pressure`, and `Counter` nodes.
 
 [[devices]]
 id = "opcua1"
 name = "Dummy OPC UA"
-address = "opc.tcp://localhost:4840/freeopcua/server/"
+address = "opc.tcp://127.0.0.1:4840/freeopcua/server/"
 scan_rate_ms = 1000
 application_name = "ForgeIO OPC UA Client"
 session_name = "ForgeIOSession"
 application_uri = "urn:forgeio:client"
 max_message_size = 16777216
 max_chunk_count = 1024
+connect_retry_attempts = 5
+connect_retry_delay_ms = 500
+connect_retry_backoff = 2.0
+connect_timeout_ms = 3000
 
 [[tags]]
 path = "Dummy/Temperature"
