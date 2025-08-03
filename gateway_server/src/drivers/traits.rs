@@ -22,6 +22,14 @@ pub struct DriverConfig {
     pub max_message_size: Option<usize>,
     #[serde(default)]
     pub max_chunk_count: Option<usize>,
+    #[serde(default)]
+    pub connect_retry_attempts: Option<u32>,
+    #[serde(default)]
+    pub connect_retry_delay_ms: Option<u64>,
+    #[serde(default)]
+    pub connect_retry_backoff: Option<f64>,
+    #[serde(default)]
+    pub connect_timeout_ms: Option<u64>,
 }
 
 /// Represents a request to read or write a tag

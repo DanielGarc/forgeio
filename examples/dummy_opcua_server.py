@@ -5,6 +5,7 @@ from asyncua import ua, Server
 async def main():
     server = Server()
     await server.init()
+    server.set_security_policy([ua.SecurityPolicyType.NoSecurity])
     server.set_endpoint("opc.tcp://0.0.0.0:4840/freeopcua/server/")
     server.set_server_name("Dummy OPC UA Server")
 
