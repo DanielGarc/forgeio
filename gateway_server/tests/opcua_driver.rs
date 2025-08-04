@@ -1,48 +1,80 @@
 use gateway_server::drivers::opcua::OpcUaDriver;
 use gateway_server::drivers::traits::{DeviceDriver, DriverConfig};
-use std::process::{Child, Command, Stdio};
-use std::time::Duration;
-use std::{path::PathBuf, thread::sleep};
+use opcua::server::address_space::Variable;
+use opcua::server::diagnostics::NamespaceMetadata;
+use opcua::server::node_manager::memory::{simple_node_manager, SimpleNodeManager};
+use opcua::server::{ServerBuilder, ServerHandle};
+use opcua::types::NodeId;
+use tokio::time::{sleep, Duration};
 
-struct DummyServer(Child);
+struct DummyServer {
+    handle: ServerHandle,
+    _task: tokio::task::JoinHandle<()>,
+}
 
 impl DummyServer {
-    fn start() -> Self {
-        let _ = Command::new("python")
-            .args(["-m", "pip", "install", "--quiet", "asyncua==0.9.92"])
-            .status();
-        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.pop();
-        path.push("examples/dummy_opcua_server.py");
-        let mut child = Command::new("python")
-            .arg(path)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("failed to start server");
-        // give the server a moment to initialize
-        sleep(Duration::from_secs(2));
-        if child.try_wait().expect("wait failed").is_some() {
-            panic!("server exited immediately");
+    async fn start() -> Self {
+        let namespace_uri = "http://forgeio/dummy/";
+        let (server, handle) = ServerBuilder::new_anonymous("Dummy OPC UA Server")
+            .host("127.0.0.1")
+            .port(4840)
+            .with_node_manager(simple_node_manager(
+                NamespaceMetadata {
+                    namespace_uri: namespace_uri.to_string(),
+                    ..Default::default()
+                },
+                "dummy",
+            ))
+            .build()
+            .unwrap();
+
+        let node_manager = handle
+            .node_managers()
+            .get_of_type::<SimpleNodeManager>()
+            .unwrap();
+        let ns = handle.get_namespace_index(namespace_uri).unwrap();
+        {
+            let mut space = node_manager.address_space().write();
+            let _ = space.add_variables(
+                vec![
+                    Variable::new(
+                        &NodeId::new(ns, "Temperature"),
+                        "Temperature",
+                        "Temperature",
+                        20f64,
+                    ),
+                    Variable::new(&NodeId::new(ns, "Pressure"), "Pressure", "Pressure", 1f64),
+                    Variable::new(&NodeId::new(ns, "Counter"), "Counter", "Counter", 0i32),
+                ],
+                &NodeId::objects_folder_id(),
+            );
         }
-        DummyServer(child)
+
+        let task = tokio::spawn(async move {
+            server.run().await.unwrap();
+        });
+        sleep(Duration::from_secs(1)).await;
+        DummyServer {
+            handle,
+            _task: task,
+        }
     }
 }
 
 impl Drop for DummyServer {
     fn drop(&mut self) {
-        let _ = self.0.kill();
+        self.handle.cancel();
     }
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn browse_tags_from_dummy_server() {
     let _ = tracing_subscriber::fmt::try_init();
-    let _server = DummyServer::start();
+    let _server = DummyServer::start().await;
     let config = DriverConfig {
         id: "srv".into(),
         name: "srv".into(),
-        address: "opc.tcp://127.0.0.1:4840/freeopcua/server/".into(),
+        address: "opc.tcp://127.0.0.1:4840/".into(),
         scan_rate_ms: 1000,
         application_name: Some("TestClient".into()),
         application_uri: None,
@@ -58,7 +90,7 @@ async fn browse_tags_from_dummy_server() {
     driver.connect().await.unwrap();
     driver.check_status().await.unwrap();
 
-    let tags = driver.browse_node("ns=0;i=85").unwrap();
+    let tags = driver.browse_node("ns=0;i=85").await.unwrap();
     assert!(tags.contains(&"Temperature".to_string()));
     assert!(tags.contains(&"Pressure".to_string()));
     assert!(tags.contains(&"Counter".to_string()));

@@ -178,41 +178,30 @@ Refer to the [docs/](docs/) directory for detailed guides.
 
 ### Dummy OPC UA Server for Testing
 
-If you need an OPC UA endpoint for local development, a simple Python script is
-included in `examples/dummy_opcua_server.py`. The script creates a server with a
-few variables that change value every second.
+If you need an OPC UA endpoint for local development, a small Rust server is
+included in `gateway_server/examples/dummy_opcua_server.rs`. The server exposes a few test variables.
 
-1. Install the required package:
+1. Start the server (the gateway does **not** start it automatically):
 
-   ```bash
-   pip install asyncua
-   ```
+```bash
+cargo run -p gateway_server --example dummy_opcua_server
+```
 
-2. Start the server (the Rust gateway does **not** start it automatically):
+2. With the server running, launch the gateway using the default
+`config.toml`:
 
-   ```bash
-   python examples/dummy_opcua_server.py
-   ```
+```bash
+cargo run --bin gateway_server
+```
 
-3. With the Python server running, launch the gateway using the default
-   `config.toml`:
+3. To exercise the built-in connection retry logic against the dummy server,
+run the included integration test:
 
-   ```bash
-   cargo run --bin gateway_server
-   ```
+```bash
+cargo test -p gateway_server browse_tags_from_dummy_server -- --nocapture
+```
 
-4. To exercise the built-in connection retry logic against the dummy server,
-   run the included integration test:
-
-   ```bash
-   cargo test -p gateway_server read_tag_from_dummy_server -- --nocapture
-   ```
-
-   The gateway will connect to the dummy OPC UA server and log the
-   connection status. As the polling loop runs you should see log messages
-   showing each read cycle and whether the configured tags were found.
-
-The server listens on `opc.tcp://127.0.0.1:4840/freeopcua/server/` and provides
+The server listens on `opc.tcp://127.0.0.1:4840/` and provides
 `Temperature`, `Pressure`, and `Counter` nodes for testing reads and
 subscriptions.
 

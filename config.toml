@@ -1,15 +1,15 @@
 # Example configuration for the ForgeIO Gateway Server
 # This file defines device drivers and the tags to poll from them.
 #
-# The default OPC UA device configuration assumes you are running the
-# Python test server located at `examples/dummy_opcua_server.py`. The
-# server listens on `opc.tcp://127.0.0.1:4840/freeopcua/server/` and
+# The default OPC UA device configuration assumes you are running the
+# Rust test server started with `cargo run --example dummy_opcua_server`. The
+# server listens on `opc.tcp://127.0.0.1:4840/` and
 # exposes `Temperature`, `Pressure`, and `Counter` nodes.
 
 [[devices]]
 id = "opcua1"
 name = "Dummy OPC UA"
-address = "opc.tcp://127.0.0.1:4840/freeopcua/server/"
+address = "opc.tcp://127.0.0.1:4840/"
 scan_rate_ms = 1000
 application_name = "ForgeIO OPC UA Client"
 session_name = "ForgeIOSession"
