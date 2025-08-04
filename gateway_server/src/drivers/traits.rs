@@ -1,6 +1,7 @@
 use crate::tags::structures::TagValue;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize}; // Added for config
+use std::any::Any;
 use std::collections::HashMap;
 use std::error::Error; // Imported from structures to avoid duplication
 
@@ -69,6 +70,9 @@ pub trait DeviceDriver: Send + Sync {
         &self,
         tags: HashMap<String, TagValue>,
     ) -> DriverResult<HashMap<String, TagValue>>;
+
+    /// Enable downcasting to concrete types
+    fn as_any(&self) -> &dyn Any;
 
     // TODO: Add methods for subscription-based updates if the protocol supports it
     // async fn subscribe_tags(&mut self, tags: &[TagRequest]) -> DriverResult<()>;
