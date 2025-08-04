@@ -48,6 +48,13 @@ pub struct DiscoverResponse {
 }
 
 #[derive(Serialize)]
+pub struct TagDiscoveryResponse {
+    pub driver_id: String,
+    pub tags: Vec<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Serialize)]
 pub struct DriverInfo {
     pub id: String,
     pub name: String,

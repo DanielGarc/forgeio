@@ -1,0 +1,40 @@
+# Example configuration for the ForgeIO Gateway Server
+# This file defines device drivers and the tags to poll from them.
+#
+# The default OPC UA device configuration assumes you are running the
+# Rust test server started with `cargo run --example dummy_opcua_server`. The
+# server listens on `opc.tcp://127.0.0.1:4840/` and
+# exposes `Temperature`, `Pressure`, and `Counter` nodes.
+
+[[devices]]
+id = "opcua1"
+name = "Dummy OPC UA"
+address = "opc.tcp://127.0.0.1:4840/"
+scan_rate_ms = 1000
+application_name = "ForgeIO OPC UA Client"
+session_name = "ForgeIOSession"
+application_uri = "urn:forgeio:client"
+max_message_size = 16777216
+max_chunk_count = 1024
+connect_retry_attempts = 5
+connect_retry_delay_ms = 500
+connect_retry_backoff = 2.0
+connect_timeout_ms = 3000
+
+[[tags]]
+path = "Dummy/Temperature"
+driver_id = "opcua1"
+address = "ns=2;s=Temperature"
+poll_rate_ms = 1000
+
+[[tags]]
+path = "Dummy/Pressure"
+driver_id = "opcua1"
+address = "ns=2;s=Pressure"
+poll_rate_ms = 1000
+
+[[tags]]
+path = "Dummy/Counter"
+driver_id = "opcua1"
+address = "ns=2;s=Counter"
+poll_rate_ms = 1000
