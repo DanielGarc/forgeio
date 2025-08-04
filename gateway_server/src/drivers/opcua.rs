@@ -1,9 +1,12 @@
 use crate::drivers::traits::{DeviceDriver, DriverConfig, DriverResult, TagRequest};
 use crate::tags::structures::{Quality, TagValue, ValueVariant};
 use async_trait::async_trait;
-use opcua::client::prelude::*;
-use opcua::sync::RwLock;
-use opcua::types::{NodeId, UAString};
+use opcua::client::{Client, ClientBuilder, IdentityToken, Session};
+use opcua::types::{
+    AttributeId, BrowseDescription, BrowseDirection, BrowseResultMask, DataValue,
+    EndpointDescription, MessageSecurityMode, NodeId, QualifiedName, ReadValueId, ReferenceTypeId,
+    TimestampsToReturn, UAString, UserTokenPolicy, Variant,
+};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -14,15 +17,17 @@ use tracing::{info, warn};
 pub struct OpcUaDriver {
     config: DriverConfig,
     client: Mutex<Option<Client>>,
-    session: Mutex<Option<Arc<RwLock<Session>>>>,
+    session: Mutex<Option<Arc<Session>>>,
+    event_loop: Mutex<Option<tokio::task::JoinHandle<opcua::types::StatusCode>>>,
 }
 
 impl OpcUaDriver {
     pub fn new(config: DriverConfig) -> Result<Self, Box<dyn std::error::Error>> {
-        Ok(OpcUaDriver {
+        Ok(Self {
             config,
             client: Mutex::new(None),
             session: Mutex::new(None),
+            event_loop: Mutex::new(None),
         })
     }
 
@@ -30,7 +35,7 @@ impl OpcUaDriver {
         node_id_str: &str,
     ) -> Result<NodeId, Box<dyn std::error::Error + Send + Sync>> {
         NodeId::from_str(node_id_str)
-            .map_err(|e| format!("Invalid NodeId '{}': {:?}", node_id_str, e).into())
+            .map_err(|e| format!("Invalid NodeId '{}': {e:?}", node_id_str).into())
     }
 
     fn data_value_to_tag_value(dv: &DataValue) -> TagValue {
@@ -68,6 +73,7 @@ impl OpcUaDriver {
         TagValue::new(value_variant, quality)
     }
 
+    #[allow(dead_code)]
     fn tag_value_to_variant(tv: &TagValue) -> Variant {
         match &tv.value {
             ValueVariant::Bool(b) => Variant::Boolean(*b),
@@ -79,8 +85,8 @@ impl OpcUaDriver {
         }
     }
 
-    pub fn browse_node(&self, node_id_str: &str) -> DriverResult<Vec<String>> {
-        let session_arc = {
+    pub async fn browse_node(&self, node_id_str: &str) -> DriverResult<Vec<String>> {
+        let session = {
             let guard = self.session.lock().unwrap();
             guard.clone().ok_or("not connected")?
         };
@@ -95,33 +101,22 @@ impl OpcUaDriver {
             result_mask: BrowseResultMask::All as u32,
         };
 
-        let session = session_arc.write();
         let results = session
-            .browse(&[browse_desc])
-            .map_err(|e| format!("browse error: {:?}", e))?;
+            .browse(&[browse_desc], 0, None)
+            .await
+            .map_err(|e| format!("browse error: {e:?}"))?;
 
         let mut names = Vec::new();
-        if let Some(res) = results {
-            for r in res {
-                if let Some(refs) = r.references {
-                    for reference in refs {
-                        names.push(reference.browse_name.name.to_string());
-                    }
+        if let Some(res) = results.get(0) {
+            if let Some(refs) = &res.references {
+                for reference in refs {
+                    names.push(reference.browse_name.name.to_string());
                 }
             }
         }
         Ok(names)
     }
 }
-
-// impl std::fmt::Debug for OpcUaDriver {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         f.debug_struct("OpcUaDriver")
-//          .field("config", &self.config)
-//          .field("client", &"Mutex<Client>")
-//          .finish()
-//     }
-// }
 
 #[async_trait]
 impl DeviceDriver for OpcUaDriver {
@@ -142,77 +137,67 @@ impl DeviceDriver for OpcUaDriver {
         let mut attempt = 0;
 
         loop {
-            let cfg_clone = cfg.clone();
-            let address = cfg_clone.address.clone();
-            let fut = tokio::task::spawn_blocking(move || {
-                let builder = ClientBuilder::new()
+            let attempt_fut = async {
+                let mut client = ClientBuilder::new()
                     .application_name(
-                        cfg_clone
-                            .application_name
+                        cfg.application_name
                             .as_deref()
                             .unwrap_or("ForgeIO OPC UA Client"),
                     )
                     .application_uri(
-                        cfg_clone
-                            .application_uri
+                        cfg.application_uri
                             .as_deref()
                             .unwrap_or("urn:forgeio:client"),
                     )
-                    .session_name(
-                        cfg_clone
-                            .session_name
-                            .as_deref()
-                            .unwrap_or("ForgeIOSession"),
-                    )
+                    .session_name(cfg.session_name.as_deref().unwrap_or("ForgeIOSession"))
                     .trust_server_certs(true)
                     .create_sample_keypair(true)
-                    .max_message_size(cfg_clone.max_message_size.unwrap_or(0))
-                    .max_chunk_count(cfg_clone.max_chunk_count.unwrap_or(0));
-                let mut client = builder.client().ok_or("failed to build client")?;
+                    .max_message_size(cfg.max_message_size.unwrap_or(0))
+                    .max_chunk_count(cfg.max_chunk_count.unwrap_or(0))
+                    .client()
+                    .map_err(|e| format!("failed to build client: {e:?}"))?;
+
                 let endpoint: EndpointDescription = (
-                    address.as_str(),
+                    cfg.address.as_str(),
                     "None",
                     MessageSecurityMode::None,
                     UserTokenPolicy::anonymous(),
                 )
                     .into();
-                let session = client
-                    .connect_to_endpoint(endpoint, IdentityToken::Anonymous)
-                    .map_err(|e| format!("failed to connect: {:?}", e))?;
-                Ok::<_, Box<dyn std::error::Error + Send + Sync>>((client, session))
-            });
 
-            let attempt_result = tokio::time::timeout(Duration::from_millis(timeout_ms), fut).await;
+                let (session, event_loop) = client
+                    .connect_to_matching_endpoint(endpoint, IdentityToken::Anonymous)
+                    .await
+                    .map_err(|e| format!("failed to connect: {e:?}"))?;
 
-            match attempt_result {
-                Ok(join_res) => match join_res {
-                    Ok(connect_res) => match connect_res {
-                        Ok((client, session)) => {
-                            info!("OPC UA driver connected to {}", self.config.address);
-                            *self.client.lock().unwrap() = Some(client);
-                            *self.session.lock().unwrap() = Some(session);
-                            return Ok(());
-                        }
-                        Err(e) if attempt < max_retries => {
-                            warn!(
-                                "OPC UA connection attempt {} failed: {}. Retrying in {} ms",
-                                attempt + 1,
-                                e,
-                                delay
-                            );
-                        }
-                        Err(e) => return Err(e),
-                    },
-                    Err(e) if attempt < max_retries => {
-                        warn!(
-                            "OPC UA connection attempt {} join error: {}. Retrying in {} ms",
-                            attempt + 1,
-                            e,
-                            delay
-                        );
+                let mut handle = event_loop.spawn();
+                tokio::select! {
+                    status = &mut handle => {
+                        Err(format!("event loop ended: {status:?}"))
                     }
-                    Err(e) => return Err(Box::new(e)),
-                },
+                    _ = session.wait_for_connection() => {
+                        Ok((client, session, handle))
+                    }
+                }
+            };
+
+            match tokio::time::timeout(Duration::from_millis(timeout_ms), attempt_fut).await {
+                Ok(Ok((client, session, handle))) => {
+                    *self.client.lock().unwrap() = Some(client);
+                    *self.session.lock().unwrap() = Some(session);
+                    *self.event_loop.lock().unwrap() = Some(handle);
+                    info!("OPC UA driver connected to {}", self.config.address);
+                    return Ok(());
+                }
+                Ok(Err(e)) if attempt < max_retries => {
+                    warn!(
+                        "OPC UA connection attempt {} failed: {}. Retrying in {} ms",
+                        attempt + 1,
+                        e,
+                        delay
+                    );
+                }
+                Ok(Err(e)) => return Err(e.into()),
                 Err(_) if attempt < max_retries => {
                     warn!(
                         "OPC UA connection attempt {} timed out after {} ms. Retrying in {} ms",
@@ -239,11 +224,14 @@ impl DeviceDriver for OpcUaDriver {
     async fn disconnect(&self) -> DriverResult<()> {
         let session = { self.session.lock().unwrap().take() };
         if let Some(session) = session {
-            tokio::task::spawn_blocking(move || {
-                session.read().disconnect();
-            })
-            .await
-            .map_err(|e| format!("disconnect join error: {e}"))?;
+            session
+                .disconnect()
+                .await
+                .map_err(|e| format!("disconnect error: {e:?}"))?;
+        }
+        let handle = { self.event_loop.lock().unwrap().take() };
+        if let Some(handle) = handle {
+            let _ = handle.await;
         }
         *self.client.lock().unwrap() = None;
         Ok(())
@@ -251,8 +239,7 @@ impl DeviceDriver for OpcUaDriver {
 
     async fn check_status(&self) -> DriverResult<()> {
         if let Some(session) = self.session.lock().unwrap().as_ref() {
-            let session = session.read();
-            if session.is_connected() {
+            if session.server_session_id() != NodeId::null() {
                 return Ok(());
             }
         }
@@ -260,11 +247,10 @@ impl DeviceDriver for OpcUaDriver {
     }
 
     async fn read_tags(&self, tags: &[TagRequest]) -> DriverResult<HashMap<String, TagValue>> {
-        let session_arc = {
+        let session = {
             let guard = self.session.lock().unwrap();
             guard.clone().ok_or("not connected")?
         };
-        let session = session_arc.write();
 
         let mut read_ids = Vec::new();
         for t in tags {
@@ -272,38 +258,21 @@ impl DeviceDriver for OpcUaDriver {
             read_ids.push(ReadValueId {
                 node_id,
                 attribute_id: AttributeId::Value as u32,
-                index_range: UAString::null(),
+                index_range: Default::default(),
                 data_encoding: QualifiedName::null(),
             });
         }
 
         let data_values = session
             .read(&read_ids, TimestampsToReturn::Both, 0.0)
-            .map_err(|e| format!("read error: {:?}", e))?;
+            .await
+            .map_err(|e| format!("read error: {e:?}"))?;
 
         info!(
             "OPC UA read {} values from {}",
             data_values.len(),
             self.config.address
         );
-
-        for (req, dv) in tags.iter().zip(data_values.iter()) {
-            match dv.status {
-                Some(status) if status.is_good() => {
-                    if let Some(val) = &dv.value {
-                        info!("Read {} = {:?}", req.address, val);
-                    } else {
-                        info!("Read {} with empty value", req.address);
-                    }
-                }
-                Some(status) => {
-                    warn!("Bad status {:?} for node {}", status, req.address);
-                }
-                None => {
-                    warn!("No status for node {}", req.address);
-                }
-            }
-        }
 
         let mut result = HashMap::new();
         for (req, dv) in tags.iter().zip(data_values.iter()) {
