@@ -1,0 +1,66 @@
+# Example configuration for multiple OPC UA clients in ForgeIO Gateway Server
+# This demonstrates how to configure multiple OPC UA devices and their tags
+
+# First OPC UA device
+[[devices]]
+id = "opcua1"
+name = "Primary OPC UA Server"
+address = "opc.tcp://127.0.0.1:4840/"
+scan_rate_ms = 1000
+application_name = "ForgeIO OPC UA Client 1"
+session_name = "ForgeIOSession1"
+application_uri = "urn:forgeio:client:1"
+max_message_size = 16777216
+max_chunk_count = 1024
+connect_retry_attempts = 5
+connect_retry_delay_ms = 500
+connect_retry_backoff = 2.0
+connect_timeout_ms = 3000
+
+# Second OPC UA device (you would change the address for a real second server)
+[[devices]]
+id = "opcua2"
+name = "Secondary OPC UA Server"
+address = "opc.tcp://127.0.0.1:4841/"
+scan_rate_ms = 2000
+application_name = "ForgeIO OPC UA Client 2"
+session_name = "ForgeIOSession2"
+application_uri = "urn:forgeio:client:2"
+max_message_size = 16777216
+max_chunk_count = 1024
+connect_retry_attempts = 3
+connect_retry_delay_ms = 1000
+connect_retry_backoff = 1.5
+connect_timeout_ms = 5000
+
+# Tags from first OPC UA server
+[[tags]]
+path = "Plant1/Temperature"
+driver_id = "opcua1"
+address = "ns=2;s=Temperature"
+poll_rate_ms = 1000
+
+[[tags]]
+path = "Plant1/Pressure"
+driver_id = "opcua1"
+address = "ns=2;s=Pressure"
+poll_rate_ms = 1000
+
+[[tags]]
+path = "Plant1/Counter"
+driver_id = "opcua1"
+address = "ns=2;s=Counter"
+poll_rate_ms = 1000
+
+# Tags from second OPC UA server (this will fail to connect but shows configuration)
+[[tags]]
+path = "Plant2/Temperature"
+driver_id = "opcua2"
+address = "ns=2;s=Temperature"
+poll_rate_ms = 2000
+
+[[tags]]
+path = "Plant2/Flow"
+driver_id = "opcua2"
+address = "ns=2;s=Flow"
+poll_rate_ms = 2000

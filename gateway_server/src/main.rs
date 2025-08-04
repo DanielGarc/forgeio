@@ -1,4 +1,5 @@
 use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::get, Json, Router};
+use gateway_server::api::rest::{create_api_routes, SharedAppState};
 use gateway_server::config::settings::Settings;
 use gateway_server::drivers::opcua::OpcUaDriver;
 use gateway_server::drivers::traits::{DeviceDriver, TagRequest};
@@ -19,14 +20,6 @@ use tracing::{error, info, warn};
 // Modules are defined in the accompanying library crate (lib.rs)
 
 // Potentially other modules like scripting, historian, events etc.
-
-#[derive(Clone)]
-struct AppState {
-    tag_engine: Arc<TagEngine>,
-    driver_count: usize,
-    start_time: Instant,
-    settings: Arc<RwLock<Settings>>,
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -225,17 +218,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Start API Server ---
     info!("Starting API server...");
-    let app_state = AppState {
+    let app_state = SharedAppState {
         tag_engine: Arc::clone(&tag_engine_arc),
         driver_count: drivers_arc.len(),
         start_time,
         settings: Arc::clone(&settings_arc),
+        drivers: Arc::clone(&drivers_arc),
     };
+    
+    // Create the OPC UA API routes 
+    let opcua_routes = create_api_routes();
+    
     let app = Router::new()
         .route("/api/health", get(root))
         .route("/api/stats", get(stats))
         .route("/tags", get(get_tags))
         .route("/api/config", get(get_config).put(update_config))
+        .merge(opcua_routes)
         .with_state(app_state)
         .fallback_service(
             ServeDir::new("webui/dist").not_found_service(ServeFile::new("webui/dist/index.html")),
@@ -257,18 +256,18 @@ async fn root() -> &'static str {
     "ForgeIO Gateway Server Running"
 }
 
-async fn get_tags(State(state): State<AppState>) -> impl IntoResponse {
+async fn get_tags(State(state): State<SharedAppState>) -> impl IntoResponse {
     let tags = state.tag_engine.get_all_tags().await;
     Json(json!(tags))
 }
 
-async fn get_config(State(state): State<AppState>) -> impl IntoResponse {
+async fn get_config(State(state): State<SharedAppState>) -> impl IntoResponse {
     let cfg = state.settings.read().await.clone();
     Json(cfg)
 }
 
 async fn update_config(
-    State(state): State<AppState>,
+    State(state): State<SharedAppState>,
     Json(new_cfg): Json<Settings>,
 ) -> impl IntoResponse {
     if let Err(e) = new_cfg.save(Path::new("config.toml")) {
@@ -282,7 +281,7 @@ async fn update_config(
     (StatusCode::OK, Json(json!({ "status": "ok" })))
 }
 
-async fn stats(State(state): State<AppState>) -> impl IntoResponse {
+async fn stats(State(state): State<SharedAppState>) -> impl IntoResponse {
     let tag_count = state.tag_engine.get_all_tag_paths().len();
     let uptime = state.start_time.elapsed().as_secs();
     Json(json!({

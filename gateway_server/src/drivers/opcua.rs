@@ -7,6 +7,7 @@ use opcua::types::{
     EndpointDescription, MessageSecurityMode, NodeId, QualifiedName, ReadValueId, ReferenceTypeId,
     TimestampsToReturn, UAString, UserTokenPolicy, Variant,
 };
+use std::any::Any;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -115,6 +116,62 @@ impl OpcUaDriver {
             }
         }
         Ok(names)
+    }
+
+    pub async fn discover_tags(&self) -> DriverResult<Vec<String>> {
+        // Start browsing from the Objects folder (ns=0;i=85)
+        let mut discovered_tags = Vec::new();
+        self.discover_tags_recursive("ns=0;i=85", &mut discovered_tags, 0, 3).await?;
+        Ok(discovered_tags)
+    }
+
+    async fn discover_tags_recursive(
+        &self,
+        node_id: &str,
+        discovered: &mut Vec<String>,
+        depth: usize,
+        max_depth: usize,
+    ) -> DriverResult<()> {
+        if depth > max_depth {
+            return Ok(());
+        }
+
+        let children = self.browse_node(node_id).await?;
+        for child in children {
+            // Try to construct a potential node ID - this is simplified
+            let child_node_id = format!("ns=2;s={}", child);
+            
+            // Check if this looks like a data variable by trying to read it
+            if self.is_data_variable(&child_node_id).await.unwrap_or(false) {
+                discovered.push(child);
+            }
+
+            // Recurse for non-data variables
+            if depth < max_depth && !self.is_data_variable(&child_node_id).await.unwrap_or(true) {
+                let _ = self.discover_tags_recursive(&child_node_id, discovered, depth + 1, max_depth).await;
+            }
+        }
+        Ok(())
+    }
+
+    async fn is_data_variable(&self, node_id: &str) -> DriverResult<bool> {
+        let session = {
+            let guard = self.session.lock().unwrap();
+            guard.clone().ok_or("not connected")?
+        };
+
+        let node_id = Self::parse_node_id(node_id)?;
+        let read_id = ReadValueId {
+            node_id,
+            attribute_id: AttributeId::Value as u32,
+            index_range: Default::default(),
+            data_encoding: QualifiedName::null(),
+        };
+
+        match session.read(&[read_id], TimestampsToReturn::Neither, 0.0).await {
+            Ok(values) => Ok(!values.is_empty() && values[0].value.is_some()),
+            Err(_) => Ok(false),
+        }
     }
 }
 
@@ -287,4 +344,15 @@ impl DeviceDriver for OpcUaDriver {
     ) -> DriverResult<HashMap<String, TagValue>> {
         Ok(HashMap::new())
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
+
+// Remove the incorrect implementation
+// impl dyn DeviceDriver + Send + Sync {
+//     pub fn as_any(&self) -> &dyn Any {
+//         self
+//     }
+// }
