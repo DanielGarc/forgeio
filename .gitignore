@@ -14,3 +14,4 @@
 # Web UI artifacts
 /webui/node_modules/
 /webui/dist/
+*.swp
