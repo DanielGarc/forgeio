@@ -1,4 +1,4 @@
-use crate::drivers::traits::DriverConfig; // Reuse DriverConfig for now
+use crate::drivers::traits::OpcDriverConfig; // Reuse driver config for now
 use config::{Config, ConfigError, File};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -19,7 +19,7 @@ pub struct TagConfig {
 pub struct Settings {
     // Maybe add general settings like server port, log level etc. later
     // pub server_port: u16,
-    pub devices: Vec<DriverConfig>, // A list of device configurations
+    pub devices: Vec<OpcDriverConfig>, // A list of device configurations
     #[serde(default)] // Make tags optional in the config file
     pub tags: Vec<TagConfig>,       // A list of tag configurations
 }

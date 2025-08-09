@@ -12,7 +12,7 @@ use tokio::sync::RwLock;
 use tracing::{info, warn, error};
 
 use crate::drivers::opcua::OpcUaDriver;
-use crate::drivers::traits::DeviceDriver;
+use crate::drivers::traits::OpcDriver;
 use crate::tags::engine::TagEngine;
 use crate::config::settings::Settings;
 
@@ -22,7 +22,7 @@ pub struct SharedAppState {
     pub driver_count: usize,
     pub start_time: tokio::time::Instant,
     pub settings: Arc<RwLock<Settings>>,
-    pub drivers: Arc<HashMap<String, Arc<dyn DeviceDriver + Send + Sync>>>,
+    pub drivers: Arc<HashMap<String, Arc<dyn OpcDriver + Send + Sync>>>,
 }
 
 #[derive(Deserialize)]
