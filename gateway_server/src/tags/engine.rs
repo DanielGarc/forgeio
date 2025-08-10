@@ -1,4 +1,4 @@
-use crate::tags::structures::{Tag, TagValue, Quality};
+use crate::tags::structures::{Tag, TagValue};
 use dashmap::DashMap; // Using DashMap for concurrent R/W access
 use std::sync::Arc;
 

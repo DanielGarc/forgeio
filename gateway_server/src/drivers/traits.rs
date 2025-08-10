@@ -5,9 +5,9 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::error::Error; // Imported from structures to avoid duplication
 
-/// Common configuration for all drivers
+/// Configuration for an OPC UA driver
 #[derive(Debug, Clone, Deserialize, Serialize)] // Added Deserialize, Serialize, and Debug
-pub struct DriverConfig {
+pub struct OpcDriverConfig {
     pub id: String,        // Unique identifier for this device instance
     pub name: String,      // User-friendly name
     pub address: String,   // e.g., IP address, COM port, connection string
@@ -35,33 +35,32 @@ pub struct DriverConfig {
 
 /// Represents a request to read or write a tag
 #[derive(Clone)]
-pub struct TagRequest {
+pub struct OpcTagRequest {
     pub address: String, // Protocol-specific tag address (e.g., "ns=1;s=MyTag", "40001", "Topic/Subtopic")
                          // Potentially add data type hint
 }
 
 // Type alias for results from driver operations
-pub type DriverResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
+pub type OpcDriverResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
-/// The core trait that all device protocol drivers must implement.
-/// This allows the gateway to interact with different devices uniformly.
+/// Trait implemented by OPC UA drivers.
 #[async_trait]
-pub trait DeviceDriver: Send + Sync {
+pub trait OpcDriver: Send + Sync {
     /// Get the configuration of this driver instance.
-    fn config(&self) -> &DriverConfig;
+    fn config(&self) -> &OpcDriverConfig;
 
     /// Connect to the underlying device.
-    async fn connect(&self) -> DriverResult<()>;
+    async fn connect(&self) -> OpcDriverResult<()>;
 
     /// Disconnect from the underlying device.
-    async fn disconnect(&self) -> DriverResult<()>;
+    async fn disconnect(&self) -> OpcDriverResult<()>;
 
     /// Check the connection status.
-    async fn check_status(&self) -> DriverResult<()>; // Returns Ok(()) if connected, Err otherwise
+    async fn check_status(&self) -> OpcDriverResult<()>; // Returns Ok(()) if connected, Err otherwise
 
     /// Read a batch of tags.
     /// Takes a list of tag addresses and returns a map of address to TagValue.
-    async fn read_tags(&self, tags: &[TagRequest]) -> DriverResult<HashMap<String, TagValue>>;
+    async fn read_tags(&self, tags: &[OpcTagRequest]) -> OpcDriverResult<HashMap<String, TagValue>>;
 
     /// Write a batch of tags.
     /// Takes a map of tag address to the TagValue to write.
@@ -69,13 +68,13 @@ pub trait DeviceDriver: Send + Sync {
     async fn write_tags(
         &self,
         tags: HashMap<String, TagValue>,
-    ) -> DriverResult<HashMap<String, TagValue>>;
+    ) -> OpcDriverResult<HashMap<String, TagValue>>;
 
     /// Enable downcasting to concrete types
     fn as_any(&self) -> &dyn Any;
 
     // TODO: Add methods for subscription-based updates if the protocol supports it
-    // async fn subscribe_tags(&mut self, tags: &[TagRequest]) -> DriverResult<()>;
-    // async fn unsubscribe_tags(&mut self, tags: &[TagRequest]) -> DriverResult<()>;
+    // async fn subscribe_tags(&mut self, tags: &[OpcTagRequest]) -> OpcDriverResult<()>;
+    // async fn unsubscribe_tags(&mut self, tags: &[OpcTagRequest]) -> OpcDriverResult<()>;
     // Potentially return a stream or use a callback mechanism for subscription updates
 }

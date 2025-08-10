@@ -1,4 +1,4 @@
-use crate::drivers::traits::{DeviceDriver, DriverConfig, DriverResult, TagRequest};
+use crate::drivers::traits::{OpcDriver, OpcDriverConfig, OpcDriverResult, OpcTagRequest};
 use crate::tags::structures::{Quality, TagValue, ValueVariant};
 use async_trait::async_trait;
 use opcua::client::{Client, ClientBuilder, IdentityToken, Session};
@@ -16,14 +16,14 @@ use tokio::time::sleep;
 use tracing::{info, warn};
 
 pub struct OpcUaDriver {
-    config: DriverConfig,
+    config: OpcDriverConfig,
     client: Mutex<Option<Client>>,
     session: Mutex<Option<Arc<Session>>>,
     event_loop: Mutex<Option<tokio::task::JoinHandle<opcua::types::StatusCode>>>,
 }
 
 impl OpcUaDriver {
-    pub fn new(config: DriverConfig) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(config: OpcDriverConfig) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
             config,
             client: Mutex::new(None),
@@ -86,7 +86,7 @@ impl OpcUaDriver {
         }
     }
 
-    pub async fn browse_node(&self, node_id_str: &str) -> DriverResult<Vec<String>> {
+    pub async fn browse_node(&self, node_id_str: &str) -> OpcDriverResult<Vec<String>> {
         let session = {
             let guard = self.session.lock().unwrap();
             guard.clone().ok_or("not connected")?
@@ -118,7 +118,7 @@ impl OpcUaDriver {
         Ok(names)
     }
 
-    pub async fn discover_tags(&self) -> DriverResult<Vec<String>> {
+    pub async fn discover_tags(&self) -> OpcDriverResult<Vec<String>> {
         // Start browsing from the Objects folder (ns=0;i=85)
         let mut discovered_tags = Vec::new();
         Box::pin(self.discover_tags_recursive("ns=0;i=85", &mut discovered_tags, 0, 3)).await?;
@@ -131,7 +131,7 @@ impl OpcUaDriver {
         discovered: &'a mut Vec<String>,
         depth: usize,
         max_depth: usize,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = DriverResult<()>> + 'a + Send>> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = OpcDriverResult<()>> + 'a + Send>> {
         Box::pin(async move {
             if depth > max_depth {
                 return Ok(());
@@ -156,7 +156,7 @@ impl OpcUaDriver {
         })
     }
 
-    async fn is_data_variable(&self, node_id: &str) -> DriverResult<bool> {
+    async fn is_data_variable(&self, node_id: &str) -> OpcDriverResult<bool> {
         let session = {
             let guard = self.session.lock().unwrap();
             guard.clone().ok_or("not connected")?
@@ -178,12 +178,12 @@ impl OpcUaDriver {
 }
 
 #[async_trait]
-impl DeviceDriver for OpcUaDriver {
-    fn config(&self) -> &DriverConfig {
+impl OpcDriver for OpcUaDriver {
+    fn config(&self) -> &OpcDriverConfig {
         &self.config
     }
 
-    async fn connect(&self) -> DriverResult<()> {
+    async fn connect(&self) -> OpcDriverResult<()> {
         if self.client.lock().unwrap().is_some() {
             return Ok(());
         }
@@ -280,7 +280,7 @@ impl DeviceDriver for OpcUaDriver {
         }
     }
 
-    async fn disconnect(&self) -> DriverResult<()> {
+    async fn disconnect(&self) -> OpcDriverResult<()> {
         let session = { self.session.lock().unwrap().take() };
         if let Some(session) = session {
             session
@@ -296,7 +296,7 @@ impl DeviceDriver for OpcUaDriver {
         Ok(())
     }
 
-    async fn check_status(&self) -> DriverResult<()> {
+    async fn check_status(&self) -> OpcDriverResult<()> {
         if let Some(session) = self.session.lock().unwrap().as_ref() {
             if session.server_session_id() != NodeId::null() {
                 return Ok(());
@@ -305,7 +305,7 @@ impl DeviceDriver for OpcUaDriver {
         Err("Disconnected".into())
     }
 
-    async fn read_tags(&self, tags: &[TagRequest]) -> DriverResult<HashMap<String, TagValue>> {
+    async fn read_tags(&self, tags: &[OpcTagRequest]) -> OpcDriverResult<HashMap<String, TagValue>> {
         let session = {
             let guard = self.session.lock().unwrap();
             guard.clone().ok_or("not connected")?
@@ -343,7 +343,7 @@ impl DeviceDriver for OpcUaDriver {
     async fn write_tags(
         &self,
         _tags: HashMap<String, TagValue>,
-    ) -> DriverResult<HashMap<String, TagValue>> {
+    ) -> OpcDriverResult<HashMap<String, TagValue>> {
         Ok(HashMap::new())
     }
 
@@ -353,7 +353,7 @@ impl DeviceDriver for OpcUaDriver {
 }
 
 // Remove the incorrect implementation
-// impl dyn DeviceDriver + Send + Sync {
+// impl dyn OpcDriver + Send + Sync {
 //     pub fn as_any(&self) -> &dyn Any {
 //         self
 //     }

@@ -2,7 +2,7 @@ use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::ge
 use gateway_server::api::rest::{create_api_routes, SharedAppState};
 use gateway_server::config::settings::Settings;
 use gateway_server::drivers::opcua::OpcUaDriver;
-use gateway_server::drivers::traits::{DeviceDriver, TagRequest};
+use gateway_server::drivers::traits::{OpcDriver, OpcTagRequest};
 use gateway_server::tags::engine::TagEngine;
 use gateway_server::tags::structures::{Quality, Tag, TagMetadata, TagValue};
 use gateway_server::logging::init_logging;
@@ -54,7 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Initialize Drivers ---
     // Store drivers in a thread-safe way, accessible by ID
-    let mut driver_instances: HashMap<String, Arc<dyn DeviceDriver + Send + Sync>> = HashMap::new();
+    let mut driver_instances: HashMap<String, Arc<dyn OpcDriver + Send + Sync>> = HashMap::new();
 
     for driver_config in settings.devices {
         info!(
@@ -62,9 +62,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             driver_config.name, driver_config.id
         );
 
-        // TODO: Add a 'driver_type' field to DriverConfig to select the correct driver
+        // TODO: Add a 'driver_type' field to OpcDriverConfig to select the correct driver
         // For now, assume all are OPC UA if opcua driver exists
-        let driver: Arc<dyn DeviceDriver + Send + Sync> = {
+        let driver: Arc<dyn OpcDriver + Send + Sync> = {
             let driver = Arc::new(
                 OpcUaDriver::new(driver_config.clone())
                     .map_err(|e| format!("Failed to create OPC UA driver: {}", e))?,
@@ -167,7 +167,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         for path in tag_paths {
                             if let Some(tag) = polling_tag_engine.get_tag_details(path) {
                                 // Assumed method
-                                requests.push(TagRequest {
+                                requests.push(OpcTagRequest {
                                     address: tag.driver_address,
                                 });
                             }

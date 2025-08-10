@@ -113,7 +113,7 @@ poll_rate_ms = 1000               # Tag-specific polling rate
 
 ### Driver Implementation
 
-The `OpcUaDriver` implements the `DeviceDriver` trait and provides:
+The `OpcUaDriver` implements the `OpcDriver` trait and provides:
 
 - **Connection Management**: Automatic connection, reconnection, and connection health monitoring
 - **Tag Reading/Writing**: Efficient batch operations for tag I/O

@@ -174,7 +174,7 @@ The gateway API now requires HTTP Basic auth with the default credentials
 `admin`/`admin`.
 
 
-Refer to the [docs/](docs/) directory for detailed guides.
+Refer to the [project wiki](./wiki/Home.md) for detailed guides.
 
 ### Dummy OPC UA Server for Testing
 
@@ -217,7 +217,7 @@ Your contributions are welcome! Please:
 4. Push to the branch (`git push origin feature/foo`)
 5. Open a pull request
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for full details.
+See the [project wiki](./wiki/Contributing.md) for full details.
 
 ---
 

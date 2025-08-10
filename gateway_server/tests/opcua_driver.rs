@@ -1,5 +1,5 @@
 use gateway_server::drivers::opcua::OpcUaDriver;
-use gateway_server::drivers::traits::{DeviceDriver, DriverConfig};
+use gateway_server::drivers::traits::{OpcDriver, OpcDriverConfig};
 use opcua::server::address_space::Variable;
 use opcua::server::diagnostics::NamespaceMetadata;
 use opcua::server::node_manager::memory::{simple_node_manager, SimpleNodeManager};
@@ -71,7 +71,7 @@ impl Drop for DummyServer {
 async fn browse_tags_from_dummy_server() {
     let _ = tracing_subscriber::fmt::try_init();
     let _server = DummyServer::start().await;
-    let config = DriverConfig {
+    let config = OpcDriverConfig {
         id: "srv".into(),
         name: "srv".into(),
         address: "opc.tcp://127.0.0.1:4840/".into(),
